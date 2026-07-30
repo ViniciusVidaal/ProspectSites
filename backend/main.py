@@ -144,11 +144,15 @@ async def complete_agent_task(
             job.detail = f"Enriquecendo {index} de {len(qualified)}"
 
         inserted = await asyncio.to_thread(repository().append_new, enriched)
+        discarded = len(qualified) - len(enriched)
+        duplicates = len(enriched) - len(inserted)
         job.status = "completed"
         job.detail = (
             f"{len(inserted)} novo(s) salvo(s) · "
             f"{len(sponsored)} patrocinado(s) detectado(s) · "
-            f"{len(qualified)} qualificado(s) · navegador local"
+            f"{len(enriched)} aprovado(s) no Places · "
+            f"{discarded} descartado(s) por site próprio ou dados ausentes · "
+            f"{duplicates} duplicado(s) · navegador local"
         )
         search_tasks.pop(job_id, None)
         return job

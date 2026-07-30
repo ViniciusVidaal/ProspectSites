@@ -88,6 +88,9 @@ def main() -> None:
                         "marker_count": report.marker_count,
                         "detail": report.blocked_reason,
                     }
+                    for business in report.businesses:
+                        destination = business.destination or "destino não exposto"
+                        print(f"  - {business.name} | {destination}")
                     result = client.post(
                         f"{API_URL}/api/agent/tasks/{job_id}/complete",
                         headers=headers(),
@@ -114,4 +117,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
