@@ -69,6 +69,10 @@ def main() -> None:
                     continue
 
                 print(f"Pesquisando: {query}")
+                print(
+                    "Se o Google mostrar um CAPTCHA, resolva-o no Chrome. "
+                    "O agente aguardará por até 3 minutos."
+                )
                 try:
                     report = asyncio.run(
                         scrape_sponsored_businesses(

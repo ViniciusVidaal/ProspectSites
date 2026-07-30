@@ -78,6 +78,26 @@ async def _accept_consent(page: Page) -> None:
             return
 
 
+async def _wait_for_manual_challenge(
+    page: Page, timeout_seconds: int = 180
+) -> bool:
+    challenge_terms = (
+        "detected unusual traffic",
+        "tráfego incomum",
+        "não sou um robô",
+        "i'm not a robot",
+        "recaptcha",
+    )
+
+    for _ in range(timeout_seconds // 3):
+        body_text = (await page.locator("body").inner_text()).lower()
+        if not any(term in body_text for term in challenge_terms):
+            return True
+        await page.wait_for_timeout(3000)
+
+    return False
+
+
 async def _extract_candidates(page: Page) -> tuple[list[dict], int]:
     return await page.evaluate(
         """
@@ -299,8 +319,27 @@ async def scrape_sponsored_businesses(
         report.final_url = page.url
         body_text = (await page.locator("body").inner_text()).lower()
 
+        has_challenge = any(
+            term in body_text
+            for term in (
+                "detected unusual traffic",
+                "tráfego incomum",
+                "não sou um robô",
+                "i'm not a robot",
+                "recaptcha",
+            )
+        )
+        if has_challenge and not headless:
+            logger.warning(
+                "CAPTCHA detectado. Aguardando resolução manual por até 180 segundos."
+            )
+            await _wait_for_manual_challenge(page)
+            body_text = (await page.locator("body").inner_text()).lower()
+            report.page_title = await page.title()
+            report.final_url = page.url
+
         if "detected unusual traffic" in body_text or "tráfego incomum" in body_text:
-            report.blocked_reason = "Google bloqueou o IP do Render por tráfego incomum"
+            report.blocked_reason = "Google bloqueou a conexão por tráfego incomum"
         elif "não sou um robô" in body_text or "i'm not a robot" in body_text:
             report.blocked_reason = "Google apresentou CAPTCHA"
         elif "before you continue to google" in body_text:
