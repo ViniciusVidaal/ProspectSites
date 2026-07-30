@@ -80,9 +80,10 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
     try:
         job.status = "running"
         settings = get_settings()
-        sponsored = await scrape_sponsored_businesses(
+        scrape_report = await scrape_sponsored_businesses(
             request.query, settings.headless
         )
+        sponsored = scrape_report.businesses
         qualified = [item for item in sponsored if is_qualifying_url(item.destination)]
         job.total = len(qualified)
         enriched = []
@@ -96,10 +97,16 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
             job.detail = f"Enriquecendo {index} de {len(qualified)}"
         inserted = await asyncio.to_thread(repository().append_new, enriched)
         job.status = "completed"
+        diagnostic = (
+            f" · {scrape_report.blocked_reason}"
+            if scrape_report.blocked_reason
+            else f" · {scrape_report.marker_count} marcador(es) na página"
+        )
         job.detail = (
             f"{len(inserted)} novo(s) salvo(s) · "
             f"{len(sponsored)} patrocinado(s) detectado(s) · "
             f"{len(qualified)} qualificado(s)"
+            f"{diagnostic}"
         )
     except Exception as exc:
         job.status = "failed"
