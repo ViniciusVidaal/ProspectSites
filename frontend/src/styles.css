@@ -12,3 +12,4 @@ aside{padding:24px;align-self:start;position:sticky;top:18px}.message-label{disp
 
 .search-card form{grid-template-columns:minmax(0,1fr) auto}
 @media(max-width:900px){.search-card form{grid-template-columns:1fr}}
+.status.offline i{background:#ff6f82;box-shadow:0 0 10px #ff6f82}

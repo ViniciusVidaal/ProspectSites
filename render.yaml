@@ -22,3 +22,7 @@ services:
         value: "true"
       - key: WHATSAPP_PROFILE_DIR
         value: /tmp/whatsapp-profile
+      - key: SEARCH_MODE
+        value: agent
+      - key: AGENT_TOKEN
+        generateValue: true

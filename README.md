@@ -29,6 +29,29 @@ npm run dev
 Abra `http://localhost:5173`. No primeiro disparo, faça login no WhatsApp Web.
 A sessão fica apenas na pasta local `whatsapp-profile`, ignorada pelo Git.
 
+## Agente de pesquisa local
+
+Em produção, configure no Render:
+
+```text
+SEARCH_MODE=agent
+AGENT_TOKEN=um_token_longo_e_privado
+```
+
+No computador que executará as pesquisas, copie `agent/.env.example` para
+`agent/.env`, informe a URL do Render e use exatamente o mesmo `AGENT_TOKEN`.
+Instale as dependências e inicie:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install -r agent\requirements.txt
+playwright install chromium
+python agent\main.py
+```
+
+O agente mantém contato com o Render, abre o Chrome local quando recebe uma
+pesquisa e devolve somente os resultados marcados como patrocinados.
+
 ## Produção
 
 O frontend pode ser publicado na Vercel com `VITE_API_URL` apontando para uma URL

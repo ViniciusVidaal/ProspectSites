@@ -49,3 +49,18 @@ class Job(BaseModel):
     detail: str = ""
     processed: int = 0
     total: int = 0
+
+
+class AgentBusiness(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    destination: str = Field(default="", max_length=2000)
+
+
+class AgentResult(BaseModel):
+    businesses: list[AgentBusiness] = Field(default_factory=list, max_length=50)
+    marker_count: int = Field(default=0, ge=0)
+    detail: str = Field(default="", max_length=500)
+
+
+class AgentFailure(BaseModel):
+    detail: str = Field(min_length=1, max_length=500)

@@ -49,6 +49,7 @@ function App() {
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
+  const [agentOnline, setAgentOnline] = useState(false);
 
   const loadLeads = async () => {
     try {
@@ -61,6 +62,24 @@ function App() {
   };
 
   useEffect(() => { loadLeads(); }, []);
+
+  useEffect(() => {
+    let active = true;
+    const checkAgent = async () => {
+      try {
+        const status = await api("/api/agent/status");
+        if (active) setAgentOnline(Boolean(status.online));
+      } catch {
+        if (active) setAgentOnline(false);
+      }
+    };
+    checkAgent();
+    const timer = setInterval(checkAgent, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!job || ["completed", "failed"].includes(job.status)) return;
@@ -127,7 +146,9 @@ function App() {
     <main>
       <header className="topbar">
         <a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a>
-        <div className="status"><i/> Agente local conectado</div>
+        <div className={`status ${agentOnline ? "" : "offline"}`}>
+          <i/> Agente {agentOnline ? "conectado" : "desconectado"}
+        </div>
       </header>
 
       <section className="hero">
@@ -147,7 +168,7 @@ function App() {
         <div className="section-title"><span><Search size={20}/></span><div><h2>Nova pesquisa</h2><p>Digite livremente o nicho, bairro, cidade ou distrito que deseja mapear.</p></div></div>
         <form onSubmit={search}>
           <label><span>Palavra-chave completa</span><div><Building2 size={18}/><input required minLength="2" maxLength="200" value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Ex: Clínica odontológica Asa Sul Brasília"/></div></label>
-          <button className="primary" disabled={job && !["completed","failed"].includes(job.status)}><Radar size={18}/> Iniciar pesquisa</button>
+          <button className="primary" disabled={!agentOnline || (job && !["completed","failed"].includes(job.status))}><Radar size={18}/> {agentOnline ? "Iniciar pesquisa" : "Agente offline"}</button>
         </form>
       </section>
 

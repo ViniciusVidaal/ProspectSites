@@ -18,6 +18,8 @@ class Settings(BaseModel):
     frontend_origins: list[str]
     headless: bool
     whatsapp_profile_dir: Path
+    search_mode: str
+    agent_token: str
 
 
 @lru_cache
@@ -69,4 +71,6 @@ def get_settings() -> Settings:
         whatsapp_profile_dir=Path(
             os.getenv("WHATSAPP_PROFILE_DIR", "./whatsapp-profile")
         ).resolve(),
+        search_mode=os.getenv("SEARCH_MODE", "cloud").strip().lower(),
+        agent_token=os.getenv("AGENT_TOKEN", ""),
     )

@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from urllib.parse import quote_plus, urlparse
 
 import httpx
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 
 logger = logging.getLogger(__name__)
@@ -198,14 +199,21 @@ async def scrape_sponsored_businesses(
     report = ScrapeReport()
 
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(
-            headless=headless,
-            args=[
+        launch_options = {
+            "headless": headless,
+            "args": [
                 "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
             ],
-        )
+        }
+        if not headless:
+            launch_options["channel"] = "chrome"
+        try:
+            browser = await playwright.chromium.launch(**launch_options)
+        except PlaywrightError:
+            launch_options.pop("channel", None)
+            browser = await playwright.chromium.launch(**launch_options)
         page = await browser.new_page(
             locale="pt-BR",
             timezone_id="America/Sao_Paulo",
