@@ -19,10 +19,19 @@ HEADERS = [
 
 class SheetsRepository:
     def __init__(self, settings: Settings):
-        credentials = Credentials.from_service_account_file(
-            str(settings.service_account_file),
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
-        )
+        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+        if settings.service_account_info:
+            credentials = Credentials.from_service_account_info(
+                settings.service_account_info,
+                scopes=scopes,
+            )
+        elif settings.service_account_file:
+            credentials = Credentials.from_service_account_file(
+                str(settings.service_account_file),
+                scopes=scopes,
+            )
+        else:
+            raise RuntimeError("Credencial da conta de serviço não configurada.")
         self.service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
         self.spreadsheet_id = settings.spreadsheet_id
         self.sheet_name = settings.sheet_name
@@ -104,4 +113,3 @@ class SheetsRepository:
 
 def today_brazil() -> str:
     return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")
-

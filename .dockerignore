@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.venv
+**/__pycache__
+**/*.pyc
+frontend
+whatsapp-profile
+google-service-account.json
+*.log
+

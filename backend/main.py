@@ -38,7 +38,13 @@ def health():
         settings = get_settings()
         return {
             "status": "ok",
-            "credentials": settings.service_account_file.is_file(),
+            "credentials": bool(
+                settings.service_account_info
+                or (
+                    settings.service_account_file
+                    and settings.service_account_file.is_file()
+                )
+            ),
         }
     except RuntimeError as exc:
         return {"status": "configuration_required", "detail": str(exc)}
