@@ -10,6 +10,7 @@ load_dotenv()
 
 class Settings(BaseModel):
     places_api_key: str
+    serpapi_api_key: str = ""
     spreadsheet_id: str
     service_account_file: Path | None = None
     service_account_info: dict | None = None
@@ -54,6 +55,7 @@ def get_settings() -> Settings:
 
     return Settings(
         places_api_key=required["GOOGLE_PLACES_API_KEY"],
+        serpapi_api_key=os.getenv("SERPAPI_API_KEY", ""),
         spreadsheet_id=required["GOOGLE_SPREADSHEET_ID"],
         service_account_file=service_file,
         service_account_info=service_info,

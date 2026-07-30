@@ -8,6 +8,8 @@ services:
     envVars:
       - key: GOOGLE_PLACES_API_KEY
         sync: false
+      - key: SERPAPI_API_KEY
+        sync: false
       - key: GOOGLE_SPREADSHEET_ID
         sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
@@ -20,4 +22,3 @@ services:
         value: "true"
       - key: WHATSAPP_PROFILE_DIR
         value: /tmp/whatsapp-profile
-

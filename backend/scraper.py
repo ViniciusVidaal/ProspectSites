@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass, field
 from urllib.parse import quote_plus, urlparse
 
+import httpx
 from playwright.async_api import Page, async_playwright
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class ScrapeReport:
     page_title: str = ""
     final_url: str = ""
     blocked_reason: str = ""
+    source: str = "playwright"
 
 
 def _is_google_tracking_url(url: str) -> bool:
@@ -186,8 +188,11 @@ def _business_from_candidate(candidate: dict) -> SponsoredBusiness | None:
 
 
 async def scrape_sponsored_businesses(
-    search_term: str, headless: bool
+    search_term: str, headless: bool, serpapi_api_key: str = ""
 ) -> ScrapeReport:
+    if serpapi_api_key:
+        return await _scrape_with_serpapi(search_term, serpapi_api_key)
+
     query = quote_plus(search_term)
     report = ScrapeReport()
 
@@ -255,4 +260,63 @@ async def scrape_sponsored_businesses(
         )
         await browser.close()
 
+    return report
+
+
+async def _scrape_with_serpapi(
+    search_term: str, api_key: str
+) -> ScrapeReport:
+    report = ScrapeReport(source="serpapi")
+    params = {
+        "engine": "google_local",
+        "q": search_term,
+        "google_domain": "google.com.br",
+        "gl": "br",
+        "hl": "pt-BR",
+        "device": "desktop",
+        "no_cache": "true",
+        "api_key": api_key,
+    }
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.get(
+            "https://serpapi.com/search.json",
+            params=params,
+        )
+        response.raise_for_status()
+
+    payload = response.json()
+    if payload.get("error"):
+        raise RuntimeError(f"SerpApi: {payload['error']}")
+
+    metadata = payload.get("search_metadata", {})
+    report.page_title = "SerpApi Google Local"
+    report.final_url = metadata.get("google_local_url", "")
+    ads = payload.get("ads_results", [])
+    report.marker_count = len(ads)
+
+    seen: set[str] = set()
+    for item in ads:
+        name = (item.get("title") or item.get("ad_title") or "").strip()
+        if not name or name.casefold() in seen:
+            continue
+        seen.add(name.casefold())
+        report.businesses.append(
+            SponsoredBusiness(
+                name=name,
+                destination=(
+                    item.get("link")
+                    or item.get("displayed_link")
+                    or ""
+                ),
+            )
+        )
+
+    logger.info(
+        "SerpApi query=%r status=%r ads=%s search_id=%r",
+        search_term,
+        metadata.get("status"),
+        len(report.businesses),
+        metadata.get("id"),
+    )
     return report
