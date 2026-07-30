@@ -46,6 +46,7 @@ class ScrapeReport:
     final_url: str = ""
     blocked_reason: str = ""
     source: str = "playwright"
+    location: str = ""
 
 
 def _is_google_tracking_url(url: str) -> bool:
@@ -267,18 +268,22 @@ async def _scrape_with_serpapi(
     search_term: str, api_key: str
 ) -> ScrapeReport:
     report = ScrapeReport(source="serpapi")
-    params = {
-        "engine": "google_local",
-        "q": search_term,
-        "google_domain": "google.com.br",
-        "gl": "br",
-        "hl": "pt-BR",
-        "device": "desktop",
-        "no_cache": "true",
-        "api_key": api_key,
-    }
 
     async with httpx.AsyncClient(timeout=60) as client:
+        report.location = await _resolve_serpapi_location(client, search_term)
+        params = {
+            "engine": "google_local",
+            "q": search_term,
+            "google_domain": "google.com.br",
+            "gl": "br",
+            "hl": "pt-BR",
+            "device": "desktop",
+            "no_cache": "true",
+            "api_key": api_key,
+        }
+        if report.location:
+            params["location"] = report.location
+
         response = await client.get(
             "https://serpapi.com/search.json",
             params=params,
@@ -313,10 +318,44 @@ async def _scrape_with_serpapi(
         )
 
     logger.info(
-        "SerpApi query=%r status=%r ads=%s search_id=%r",
+        "SerpApi query=%r location=%r status=%r ads=%s search_id=%r keys=%s",
         search_term,
+        report.location,
         metadata.get("status"),
         len(report.businesses),
         metadata.get("id"),
+        sorted(payload.keys()),
     )
     return report
+
+
+async def _resolve_serpapi_location(
+    client: httpx.AsyncClient, search_term: str
+) -> str:
+    words = search_term.replace(",", " ").split()
+    if len(words) < 2:
+        return ""
+
+    max_words = min(4, len(words) - 1)
+    for size in range(max_words, 0, -1):
+        candidate = " ".join(words[-size:])
+        try:
+            response = await client.get(
+                "https://serpapi.com/locations.json",
+                params={"q": candidate, "limit": 10},
+                timeout=20,
+            )
+            response.raise_for_status()
+            locations = response.json()
+        except (httpx.HTTPError, ValueError):
+            continue
+
+        brazilian = [
+            item
+            for item in locations
+            if item.get("country_code") == "BR"
+        ]
+        if brazilian:
+            return brazilian[0].get("canonical_name", "")
+
+    return ""

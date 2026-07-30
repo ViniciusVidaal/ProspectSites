@@ -103,6 +103,11 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
             else (
                 f" · {scrape_report.marker_count} anúncio(s) retornado(s) "
                 f"via {scrape_report.source}"
+                + (
+                    f" · localização: {scrape_report.location}"
+                    if scrape_report.location
+                    else " · localização não identificada"
+                )
             )
         )
         job.detail = (
