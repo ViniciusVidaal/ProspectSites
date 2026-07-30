@@ -11,9 +11,9 @@ class SponsoredBusiness:
 
 
 async def scrape_sponsored_businesses(
-    niche: str, city: str, headless: bool
+    search_term: str, headless: bool
 ) -> list[SponsoredBusiness]:
-    query = quote_plus(f"{niche} {city}")
+    query = quote_plus(search_term)
     results: list[SponsoredBusiness] = []
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=headless)
@@ -59,4 +59,3 @@ async def scrape_sponsored_businesses(
                     results.append(SponsoredBusiness(name=name, destination=href))
         await browser.close()
     return results
-

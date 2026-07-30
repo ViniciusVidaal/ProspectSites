@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Building2, CalendarDays, CheckCircle2, ExternalLink, LoaderCircle,
-  MapPin, MessageCircle, Radar, Search, Send, Sparkles, Users
+  MessageCircle, Radar, Search, Send, Sparkles, Users
 } from "lucide-react";
 import "./styles.css";
 
@@ -21,8 +21,7 @@ async function api(path, options) {
 function App() {
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState(new Set());
-  const [niche, setNiche] = useState("");
-  const [city, setCity] = useState("");
+  const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [message, setMessage] = useState(
     "Olá! Vi sua empresa no Google e preparei uma ideia para melhorar sua presença online. Posso te mostrar?"
@@ -72,7 +71,7 @@ function App() {
     try {
       setJob(await api("/api/search", {
         method: "POST",
-        body: JSON.stringify({ niche, city }),
+        body: JSON.stringify({ query }),
       }));
     } catch (error) { setNotice(error.message); }
   };
@@ -115,10 +114,9 @@ function App() {
       </section>
 
       <section className="search-card">
-        <div className="section-title"><span><Search size={20}/></span><div><h2>Nova pesquisa</h2><p>Defina o segmento e a região que deseja mapear.</p></div></div>
+        <div className="section-title"><span><Search size={20}/></span><div><h2>Nova pesquisa</h2><p>Digite livremente o nicho, bairro, cidade ou distrito que deseja mapear.</p></div></div>
         <form onSubmit={search}>
-          <label><span>Nicho</span><div><Building2 size={18}/><input required minLength="2" value={niche} onChange={(e)=>setNiche(e.target.value)} placeholder="Ex: Clínica odontológica"/></div></label>
-          <label><span>Cidade</span><div><MapPin size={18}/><input required minLength="2" value={city} onChange={(e)=>setCity(e.target.value)} placeholder="Ex: Brasília"/></div></label>
+          <label><span>Palavra-chave completa</span><div><Building2 size={18}/><input required minLength="2" maxLength="200" value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Ex: Clínica odontológica Asa Sul Brasília"/></div></label>
           <button className="primary" disabled={job && !["completed","failed"].includes(job.status)}><Radar size={18}/> Iniciar pesquisa</button>
         </form>
       </section>
@@ -170,4 +168,3 @@ function App() {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
-

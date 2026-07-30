@@ -32,6 +32,16 @@ def repository() -> SheetsRepository:
     return SheetsRepository(get_settings())
 
 
+@app.get("/")
+def root():
+    return {
+        "name": "Prospect Sites API",
+        "status": "online",
+        "health": "/health",
+        "docs": "/docs",
+    }
+
+
 @app.get("/health")
 def health():
     try:
@@ -71,14 +81,14 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
         job.status = "running"
         settings = get_settings()
         sponsored = await scrape_sponsored_businesses(
-            request.niche, request.city, settings.headless
+            request.query, settings.headless
         )
         qualified = [item for item in sponsored if is_qualifying_url(item.destination)]
         job.total = len(qualified)
         enriched = []
         for index, item in enumerate(qualified, start=1):
             lead = await enrich_company(
-                settings.places_api_key, item.name, request.city
+                settings.places_api_key, item.name, request.query
             )
             if lead:
                 enriched.append(lead)
@@ -86,7 +96,11 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
             job.detail = f"Enriquecendo {index} de {len(qualified)}"
         inserted = await asyncio.to_thread(repository().append_new, enriched)
         job.status = "completed"
-        job.detail = f"{len(inserted)} lead(s) novo(s) salvo(s)"
+        job.detail = (
+            f"{len(inserted)} novo(s) salvo(s) · "
+            f"{len(sponsored)} patrocinado(s) detectado(s) · "
+            f"{len(qualified)} qualificado(s)"
+        )
     except Exception as exc:
         job.status = "failed"
         job.detail = str(exc)

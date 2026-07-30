@@ -37,7 +37,9 @@ def whatsapp_url(phone: str) -> str:
     return f"https://wa.me/{digits}"
 
 
-async def enrich_company(api_key: str, company: str, city: str) -> Lead | None:
+async def enrich_company(
+    api_key: str, company: str, search_context: str
+) -> Lead | None:
     headers = {
         "X-Goog-Api-Key": api_key,
         "X-Goog-FieldMask": (
@@ -48,7 +50,10 @@ async def enrich_company(api_key: str, company: str, city: str) -> Lead | None:
         response = await client.post(
             "https://places.googleapis.com/v1/places:searchText",
             headers=headers,
-            json={"textQuery": f"{company}, {city}", "languageCode": "pt-BR"},
+            json={
+                "textQuery": f"{company}, {search_context}",
+                "languageCode": "pt-BR",
+            },
         )
         response.raise_for_status()
     places = response.json().get("places", [])
@@ -67,4 +72,3 @@ async def enrich_company(api_key: str, company: str, city: str) -> Lead | None:
         current_site=site,
         place_id=place["id"],
     )
-

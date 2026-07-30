@@ -1,9 +1,24 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class SearchRequest(BaseModel):
-    niche: str = Field(min_length=2, max_length=100)
-    city: str = Field(min_length=2, max_length=100)
+    query: str | None = Field(default=None, max_length=200)
+    niche: str | None = Field(default=None, max_length=100)
+    city: str | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def normalize_query(self):
+        term = (self.query or "").strip()
+        if not term:
+            term = " ".join(
+                part.strip()
+                for part in (self.niche or "", self.city or "")
+                if part.strip()
+            )
+        if len(term) < 2:
+            raise ValueError("Informe uma palavra-chave com pelo menos 2 caracteres.")
+        self.query = term
+        return self
 
 
 class Lead(BaseModel):
@@ -34,4 +49,3 @@ class Job(BaseModel):
     detail: str = ""
     processed: int = 0
     total: int = 0
-
