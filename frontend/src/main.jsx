@@ -8,6 +8,13 @@ import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function errorMessage(detail) {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
@@ -24,7 +31,9 @@ async function api(path, options) {
     ...options,
   });
   const body = await response.json();
-  if (!response.ok) throw new Error(errorMessage(body.detail));
+  if (!response.ok) {
+    throw new ApiError(errorMessage(body.detail), response.status);
+  }
   return body;
 }
 
@@ -62,6 +71,13 @@ function App() {
         if (current.status === "completed") loadLeads();
       } catch (error) {
         setNotice(error.message);
+        setJob((current) => current ? {
+          ...current,
+          status: "failed",
+          detail: error.status === 404
+            ? "A tarefa foi interrompida porque o servidor reiniciou."
+            : error.message,
+        } : current);
       }
     }, 1500);
     return () => clearInterval(timer);
