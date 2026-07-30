@@ -8,13 +8,23 @@ import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+function errorMessage(detail) {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => item?.msg || item?.message || "Dados inválidos")
+      .join(" · ");
+  }
+  return detail?.message || "Não foi possível concluir.";
+}
+
 async function api(path, options) {
   const response = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
   const body = await response.json();
-  if (!response.ok) throw new Error(body.detail || "Não foi possível concluir.");
+  if (!response.ok) throw new Error(errorMessage(body.detail));
   return body;
 }
 
@@ -46,9 +56,13 @@ function App() {
   useEffect(() => {
     if (!job || ["completed", "failed"].includes(job.status)) return;
     const timer = setInterval(async () => {
-      const current = await api(`/api/jobs/${job.id}`);
-      setJob(current);
-      if (current.status === "completed") loadLeads();
+      try {
+        const current = await api(`/api/jobs/${job.id}`);
+        setJob(current);
+        if (current.status === "completed") loadLeads();
+      } catch (error) {
+        setNotice(error.message);
+      }
     }, 1500);
     return () => clearInterval(timer);
   }, [job?.id, job?.status]);
