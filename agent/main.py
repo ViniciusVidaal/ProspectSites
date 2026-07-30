@@ -86,6 +86,7 @@ def main() -> None:
                             for item in report.businesses
                         ],
                         "marker_count": report.marker_count,
+                        "pages_explored": report.pages_explored,
                         "detail": report.blocked_reason,
                     }
                     for business in report.businesses:

@@ -59,6 +59,7 @@ class AgentBusiness(BaseModel):
 class AgentResult(BaseModel):
     businesses: list[AgentBusiness] = Field(default_factory=list, max_length=50)
     marker_count: int = Field(default=0, ge=0)
+    pages_explored: int = Field(default=1, ge=1, le=10)
     detail: str = Field(default="", max_length=500)
 
 

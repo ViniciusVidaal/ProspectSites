@@ -1,4 +1,5 @@
 import logging
+import re
 from dataclasses import dataclass, field
 from urllib.parse import quote_plus, urlparse
 
@@ -48,6 +49,7 @@ class ScrapeReport:
     blocked_reason: str = ""
     source: str = "playwright"
     location: str = ""
+    pages_explored: int = 1
 
 
 def _is_google_tracking_url(url: str) -> bool:
@@ -154,6 +156,65 @@ async def _extract_candidates(page: Page) -> tuple[list[dict], int]:
     )
 
 
+async def _scan_while_scrolling(
+    page: Page, max_steps: int = 8
+) -> tuple[list[dict], int]:
+    collected: list[dict] = []
+    highest_marker_count = 0
+    previous_position = -1
+
+    for step in range(max_steps):
+        candidates, marker_count = await _extract_candidates(page)
+        collected.extend(candidates)
+        highest_marker_count = max(highest_marker_count, marker_count)
+
+        position = await page.evaluate("window.scrollY")
+        height = await page.evaluate(
+            "Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)"
+        )
+        viewport = await page.evaluate("window.innerHeight")
+        logger.info(
+            "Google exploration step=%s scroll=%s height=%s markers=%s candidates=%s",
+            step + 1,
+            position,
+            height,
+            marker_count,
+            len(candidates),
+        )
+
+        if position == previous_position or position + viewport >= height - 20:
+            break
+        previous_position = position
+        await page.mouse.wheel(0, max(700, int(viewport * 0.82)))
+        await page.wait_for_timeout(1100)
+
+    return collected, highest_marker_count
+
+
+async def _open_more_places(page: Page) -> bool:
+    patterns = [
+        re.compile(r"^Mais lugares$", re.IGNORECASE),
+        re.compile(r"^Ver lugares$", re.IGNORECASE),
+        re.compile(r"^More places$", re.IGNORECASE),
+        re.compile(r"^Mais empresas$", re.IGNORECASE),
+    ]
+    await page.evaluate("window.scrollTo(0, 0)")
+    await page.wait_for_timeout(500)
+
+    for pattern in patterns:
+        link = page.get_by_role("link", name=pattern).first
+        if await link.count():
+            try:
+                await link.scroll_into_view_if_needed()
+                await link.click(timeout=5000)
+                await page.wait_for_load_state("domcontentloaded", timeout=30000)
+                await page.wait_for_timeout(1800)
+                return True
+            except PlaywrightError:
+                continue
+    return False
+
+
 def _business_from_candidate(candidate: dict) -> SponsoredBusiness | None:
     names = candidate.get("headings", [])
     anchors = candidate.get("anchors", [])
@@ -245,7 +306,15 @@ async def scrape_sponsored_businesses(
         elif "before you continue to google" in body_text:
             report.blocked_reason = "Tela de consentimento do Google não foi liberada"
 
-        raw_candidates, report.marker_count = await _extract_candidates(page)
+        raw_candidates, report.marker_count = await _scan_while_scrolling(page)
+        if await _open_more_places(page):
+            report.pages_explored = 2
+            more_candidates, more_markers = await _scan_while_scrolling(
+                page, max_steps=10
+            )
+            raw_candidates.extend(more_candidates)
+            report.marker_count = max(report.marker_count, more_markers)
+
         seen: set[str] = set()
 
         for candidate in raw_candidates:
@@ -259,12 +328,13 @@ async def scrape_sponsored_businesses(
             report.businesses.append(business)
 
         logger.info(
-            "Google scrape query=%r title=%r url=%r markers=%s businesses=%s blocked=%r",
+            "Google scrape query=%r title=%r url=%r markers=%s businesses=%s pages=%s blocked=%r",
             search_term,
             report.page_title,
             report.final_url,
             report.marker_count,
             len(report.businesses),
+            report.pages_explored,
             report.blocked_reason,
         )
         await browser.close()

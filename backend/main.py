@@ -152,7 +152,8 @@ async def complete_agent_task(
             f"{len(sponsored)} patrocinado(s) detectado(s) · "
             f"{len(enriched)} aprovado(s) no Places · "
             f"{discarded} descartado(s) por site próprio ou dados ausentes · "
-            f"{duplicates} duplicado(s) · navegador local"
+            f"{duplicates} duplicado(s) · "
+            f"{result.pages_explored} página(s) explorada(s) · navegador local"
         )
         search_tasks.pop(job_id, None)
         return job
