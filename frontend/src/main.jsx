@@ -56,21 +56,13 @@ function App() {
     () => localStorage.getItem("prospect-theme") || "light"
   );
   const [message, setMessage] = useState(
-    `Olá, tudo bem?
+    `Opa, **[Empresa]**. Estava analisando o perfil de vocês no Google e vi que vocês já conquistaram [AVALIAÇÕES] avaliações e mantêm uma nota de [NOTA]⭐ no Google. Mas notei um problema grave: vocês estão perdendo clientes todos os dias por não ter um site oficial.
 
-Estava analisando o perfil da **[Empresa]** no Google e vi que vocês já conquistaram uma ótima reputação por lá. Parabéns!
+Muita gente acha a empresa no mapa, procura o site pra confirmar a credibilidade e, como não acha, fecha com a concorrência.
 
-Só notei uma oportunidade que talvez esteja fazendo vocês perderem alguns clientes: ainda não existe um site oficial da empresa.
+Eu resolvo exatamente isso. Crio sites profissionais focados em vendas por apenas R$ 497 (pagamento único), e ainda libero 1 ano de hospedagem grátis pra vocês.
 
-Muita gente encontra um negócio no Google, procura um site para conhecer melhor a empresa e, quando não encontra, acaba seguindo para outra opção.
-
-Eu trabalho ajudando empresas a resolver exatamente isso.
-
-Faço um site profissional por **R$ 497**, com **1 ano de hospedagem grátis** (você só precisa registrar o domínio).
-
-Se fizer sentido para vocês, posso preparar uma prévia personalizada, sem compromisso, para mostrar como o site poderia ficar.
-
-Se tiver interesse, é só responder **"quero ver"**.`
+Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver na prática?`
   );
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
@@ -182,10 +174,16 @@ Se tiver interesse, é só responder **"quero ver"**.`
   const whatsappHref = (lead) => {
     if (!lead.whatsapp_link) return "";
     const separator = lead.whatsapp_link.includes("?") ? "&" : "?";
-    const personalizedMessage = message.replace(
-      /\[empresa\]/gi,
-      lead.company_name
-    ).trim();
+    const reviewCount = Number(lead.review_count || 0).toLocaleString("pt-BR");
+    const rating = Number(lead.rating || 0).toLocaleString("pt-BR", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+    const personalizedMessage = message
+      .replace(/\[empresa\]/gi, lead.company_name)
+      .replace(/\[avaliações\]/gi, reviewCount)
+      .replace(/\[nota\]/gi, rating)
+      .trim();
     return `${lead.whatsapp_link}${separator}text=${encodeURIComponent(personalizedMessage)}`;
   };
 
@@ -361,7 +359,7 @@ Se tiver interesse, é só responder **"quero ver"**.`
         <aside>
           <div className="panel-title"><span><MessageCircle size={19}/></span><div><h2>Mensagem</h2><p>Texto preenchido no WhatsApp.</p></div></div>
           <div className="send-mode"><button className={sendMode === "manual" ? "active" : ""} onClick={() => setSendMode("manual")}>Manual</button><button className={sendMode === "assisted" ? "active" : ""} onClick={() => setSendMode("assisted")}>Sessão assistida</button></div>
-          <label className="message-label"><span>Mensagem de abordagem</span><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="3000"/><small className="template-tip">Use <b>[Empresa]</b> em qualquer parte do texto. O sistema substituirá pelo nome de cada lead.</small></label>
+          <label className="message-label"><span>Mensagem de abordagem</span><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="3000"/><small className="template-tip">Variáveis automáticas: <b>[Empresa]</b>, <b>[AVALIAÇÕES]</b> e <b>[NOTA]</b>.</small></label>
           {sendMode === "manual" ? <div className="manual-note"><MessageCircle size={16}/><p>Use o botão “Abrir WhatsApp” de cada lead. A mensagem será preenchida e o envio continuará sob sua confirmação.</p></div> : <div className="dispatch-box">
             <div className="dispatch-grid">
               <label><span>Quantidade nesta sessão</span><input type="number" min="1" max="500" value={sessionAmount} onChange={(event) => setSessionAmount(event.target.value)}/></label>
