@@ -22,6 +22,7 @@ HEADERS = [
     "Place ID",
     "Enviado",
     "Data do Envio",
+    "Arquivado",
 ]
 
 
@@ -59,7 +60,7 @@ class SheetsRepository:
                 },
             ).execute()
 
-        header_range = f"'{self.sheet_name}'!A1:L1"
+        header_range = f"'{self.sheet_name}'!A1:M1"
         current = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id, range=header_range
         ).execute().get("values", [])
@@ -71,30 +72,39 @@ class SheetsRepository:
                 body={"values": [HEADERS]},
             ).execute()
 
-    def list(self) -> list[Lead]:
+    def list(self, include_archived: bool = False) -> list[Lead]:
         self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A2:L",
+            range=f"'{self.sheet_name}'!A2:M",
         ).execute().get("values", [])
         leads = []
         for row in rows:
-            if len(row) <= 6 and len(row) > 5 and row[5]:
-                leads.append(
-                    Lead(
+            if len(row) > 5 and row[5] and (len(row) <= 9 or not row[9]):
+                legacy_archived = (
+                    len(row) > 12
+                    and str(row[12]).strip().lower() in {"sim", "true", "1", "arquivado"}
+                )
+                legacy_contactable = bool(
+                    (row[2] if len(row) > 2 else "")
+                    or "instagram.com" in (row[4] if len(row) > 4 else "").lower()
+                )
+                if include_archived or (not legacy_archived and legacy_contactable):
+                    leads.append(
+                        Lead(
                         date=row[0] if len(row) > 0 else "",
                         company_name=row[1] if len(row) > 1 else "",
                         phone=row[2] if len(row) > 2 else "",
                         whatsapp_link=row[3] if len(row) > 3 else "",
                         current_site=row[4] if len(row) > 4 else "",
-                        place_id=row[5],
+                            place_id=row[5],
+                            archived=legacy_archived,
+                        )
                     )
-                )
                 continue
-            padded = row + [""] * (12 - len(row))
+            padded = row + [""] * (13 - len(row))
             if padded[9]:
-                leads.append(
-                    Lead(
+                lead = Lead(
                         date=padded[0],
                         company_name=padded[1],
                         phone=padded[2],
@@ -109,12 +119,24 @@ class SheetsRepository:
                             "sim", "true", "1", "enviado"
                         },
                         sent_at=padded[11],
+                        archived=str(padded[12]).strip().lower() in {
+                            "sim", "true", "1", "arquivado"
+                        },
+                    )
+                contactable = bool(
+                    lead.phone or (
+                        lead.site_platform == "Instagram" and lead.current_site
                     )
                 )
-        return leads
+                if include_archived or (not lead.archived and contactable):
+                    leads.append(lead)
+        return sorted(
+            leads,
+            key=lambda lead: (-lead.review_count, -lead.rating, lead.company_name.casefold()),
+        )
 
     def append_new(self, leads: list[Lead]) -> list[Lead]:
-        existing = {lead.place_id for lead in self.list()}
+        existing = {lead.place_id for lead in self.list(include_archived=True)}
         fresh = [lead for lead in leads if lead.place_id not in existing]
         if not fresh:
             return []
@@ -132,12 +154,13 @@ class SheetsRepository:
                 lead.place_id,
                 "Sim" if lead.sent else "Não",
                 lead.sent_at,
+                "Sim" if lead.archived else "NÃ£o",
             ]
             for lead in fresh
         ]
         self.service.spreadsheets().values().append(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A:L",
+            range=f"'{self.sheet_name}'!A:M",
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": values},
@@ -176,54 +199,42 @@ class SheetsRepository:
         ).execute()
         return lead.model_copy(update={"sent": True, "sent_at": sent_at})
 
-    def delete(self, place_id: str) -> None:
+    def archive(self, place_id: str) -> None:
         self.ensure_sheet()
-        values = self.service.spreadsheets().values().get(
+        rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!J2:J",
+            range=f"'{self.sheet_name}'!A2:J",
         ).execute().get("values", [])
         row_number = next(
             (
                 index + 2
-                for index, row in enumerate(values)
-                if row and row[0] == place_id
+                for index, row in enumerate(rows)
+                if (
+                    (len(row) > 9 and row[9] == place_id)
+                    or (len(row) <= 6 and len(row) > 5 and row[5] == place_id)
+                )
             ),
             None,
         )
         if row_number is None:
             raise KeyError("Lead não encontrado na planilha.")
 
-        metadata = self.service.spreadsheets().get(
-            spreadsheetId=self.spreadsheet_id
-        ).execute()
-        sheet_id = next(
-            (
-                sheet["properties"]["sheetId"]
-                for sheet in metadata.get("sheets", [])
-                if sheet["properties"]["title"] == self.sheet_name
-            ),
-            None,
-        )
-        if sheet_id is None:
-            raise KeyError("Aba de leads não encontrada.")
-
-        self.service.spreadsheets().batchUpdate(
+        self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
-            body={
-                "requests": [
-                    {
-                        "deleteDimension": {
-                            "range": {
-                                "sheetId": sheet_id,
-                                "dimension": "ROWS",
-                                "startIndex": row_number - 1,
-                                "endIndex": row_number,
-                            }
-                        }
-                    }
-                ]
-            },
+            range=f"'{self.sheet_name}'!M{row_number}",
+            valueInputOption="RAW",
+            body={"values": [["Sim"]]},
         ).execute()
+
+    def archive_many(self, place_ids: list[str]) -> int:
+        archived = 0
+        for place_id in dict.fromkeys(place_ids):
+            try:
+                self.archive(place_id)
+                archived += 1
+            except KeyError:
+                continue
+        return archived
 
 
 def today_brazil() -> str:

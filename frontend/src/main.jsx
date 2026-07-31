@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Building2, CalendarDays, Check, ExternalLink, LoaderCircle, MapPin,
+  Archive, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
   MapPinned, MessageCircle, Moon, Radar, Search, Star, Sun, Trash2, Users
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
@@ -78,7 +78,13 @@ function App() {
 
   const today = new Intl.DateTimeFormat("pt-BR").format(new Date());
   const visible = useMemo(
-    () => leads.filter((lead) => dateFilter === "all" || lead.date === today),
+    () => leads
+      .filter((lead) => dateFilter === "all" || lead.date === today)
+      .sort((a, b) =>
+        Number(b.review_count || 0) - Number(a.review_count || 0)
+        || Number(b.rating || 0) - Number(a.rating || 0)
+        || a.company_name.localeCompare(b.company_name, "pt-BR")
+      ),
     [leads, dateFilter, today]
   );
   const sentCount = leads.filter((lead) => lead.sent).length;
@@ -123,14 +129,32 @@ function App() {
   };
 
   const deleteLead = async (lead) => {
-    if (!window.confirm(`Excluir ${lead.company_name} permanentemente da sua base?`)) return;
+    if (!window.confirm(`Arquivar ${lead.company_name}? Ele sairá do painel, mas continuará salvo no histórico.`)) return;
     const previous = leads;
     setLeads((items) => items.filter((item) => item.place_id !== lead.place_id));
     try {
       await api(`/api/leads/${encodeURIComponent(lead.place_id)}`, { method: "DELETE" });
     } catch (error) {
       setLeads(previous);
-      setNotice(`Não foi possível excluir o lead: ${error.message}`);
+      setNotice(`Não foi possível arquivar o lead: ${error.message}`);
+    }
+  };
+
+  const archiveToday = async () => {
+    const todayLeads = leads.filter((lead) => lead.date === today);
+    if (!todayLeads.length) return setNotice("Não há leads de hoje para arquivar.");
+    if (!window.confirm(`Arquivar os ${todayLeads.length} lead(s) de hoje? Eles continuarão salvos no histórico.`)) return;
+    const previous = leads;
+    const ids = todayLeads.map((lead) => lead.place_id);
+    setLeads((items) => items.filter((lead) => lead.date !== today));
+    try {
+      await api("/api/leads/archive", {
+        method: "POST",
+        body: JSON.stringify({ place_ids: ids }),
+      });
+    } catch (error) {
+      setLeads(previous);
+      setNotice(`Não foi possível arquivar os leads de hoje: ${error.message}`);
     }
   };
 
@@ -178,17 +202,18 @@ function App() {
         <div className="leads-panel">
           <div className="panel-head">
             <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Contatos qualificados para abordagem individual.</p></div></div>
-            <div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div>
+            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
           </div>
           <div className="table-wrap">
-            <table><thead><tr><th>Empresa</th><th>Avaliações</th><th>Site atual</th><th>Contato</th><th>Status</th><th>Ações</th></tr></thead>
-              <tbody>{visible.map((lead) => <tr key={lead.place_id} className={lead.sent ? "sent-row" : ""}>
+            <table><thead><tr><th>Posição</th><th>Empresa</th><th>Avaliações</th><th>Site atual</th><th>Contato</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody>{visible.map((lead, index) => <tr key={lead.place_id} className={lead.sent ? "sent-row" : ""}>
+                <td><span className="rank">{index + 1}º</span></td>
                 <td><strong>{lead.company_name}</strong><small>{lead.date}</small></td>
                 <td><span className="rating"><Star size={13}/>{Number(lead.rating || 0).toFixed(1)} <b>({lead.review_count})</b></span></td>
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>
                 <td>{lead.sent ? <span className="sent-badge"><Check size={12}/>Enviado</span> : <span className="pending-badge">Pendente</span>}{lead.sent_at && <small>{lead.sent_at}</small>}</td>
-                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : <span className="no-whatsapp">Sem WhatsApp</span>}<button className="delete-action" onClick={() => deleteLead(lead)} title="Excluir lead"><Trash2 size={15}/></button></div></td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}<button className="delete-action" onClick={() => deleteLead(lead)} title="Arquivar lead"><Trash2 size={15}/></button></div></td>
               </tr>)}</tbody>
             </table>
             {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}

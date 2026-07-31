@@ -5,7 +5,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .models import Job, SearchRequest
+from .models import ArchiveRequest, Job, SearchRequest
 from .places import search_eligible_profiles
 from .sheets import SheetsRepository
 
@@ -84,13 +84,24 @@ def mark_lead_sent(place_id: str):
 @app.delete("/api/leads/{place_id}")
 def delete_lead(place_id: str):
     try:
-        repository().delete(place_id)
-        return {"status": "deleted", "place_id": place_id}
+        repository().archive(place_id)
+        return {"status": "archived", "place_id": place_id}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
-            status_code=502, detail=f"Falha ao excluir no Google Sheets: {exc}"
+            status_code=502, detail=f"Falha ao arquivar no Google Sheets: {exc}"
+        ) from exc
+
+
+@app.post("/api/leads/archive")
+def archive_leads(request: ArchiveRequest):
+    try:
+        count = repository().archive_many(request.place_ids)
+        return {"status": "archived", "count": count}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Falha ao arquivar no Google Sheets: {exc}"
         ) from exc
 
 

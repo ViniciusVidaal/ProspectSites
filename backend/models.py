@@ -35,6 +35,11 @@ class Lead(BaseModel):
     place_id: str
     sent: bool = False
     sent_at: str = ""
+    archived: bool = False
+
+
+class ArchiveRequest(BaseModel):
+    place_ids: list[str] = Field(min_length=1, max_length=500)
 
 
 class Job(BaseModel):

@@ -124,6 +124,8 @@ async def search_eligible_profiles(
                     or place.get("nationalPhoneNumber")
                     or ""
                 )
+                if not phone and platform != "Instagram":
+                    continue
                 report.eligible.append(
                     Lead(
                         date=today_brazil(),
@@ -145,4 +147,7 @@ async def search_eligible_profiles(
             if not page_token:
                 break
 
+    report.eligible.sort(
+        key=lambda lead: (-lead.review_count, -lead.rating, lead.company_name.casefold())
+    )
     return report
