@@ -173,7 +173,8 @@ Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver 
 
   const whatsappHref = (lead) => {
     if (!lead.whatsapp_link) return "";
-    const separator = lead.whatsapp_link.includes("?") ? "&" : "?";
+    const phone = lead.whatsapp_link.match(/wa\.me\/(\d+)/)?.[1]
+      || lead.phone.replace(/\D/g, "");
     const reviewCount = Number(lead.review_count || 0).toLocaleString("pt-BR");
     const rating = Number(lead.rating || 0).toLocaleString("pt-BR", {
       minimumFractionDigits: 1,
@@ -184,7 +185,7 @@ Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver 
       .replace(/\[avaliações\]/gi, reviewCount)
       .replace(/\[nota\]/gi, rating)
       .trim();
-    return `${lead.whatsapp_link}${separator}text=${encodeURIComponent(personalizedMessage)}`;
+    return `whatsapp://send?phone=${phone}&text=${encodeURIComponent(personalizedMessage)}`;
   };
 
   const markSent = async (placeId) => {
@@ -265,7 +266,7 @@ Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver 
   const openNextDispatch = () => {
     if (!dispatch || dispatch.index >= dispatch.queue.length) return;
     const lead = dispatch.queue[dispatch.index];
-    window.open(whatsappHref(lead), "_blank", "noopener,noreferrer");
+    window.location.href = whatsappHref(lead);
     markSent(lead.place_id);
     const nextIndex = dispatch.index + 1;
     const nextBatchCount = dispatch.sentInBatch + 1;
@@ -349,7 +350,7 @@ Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver 
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>
                 <td>{lead.sent ? <span className="sent-badge"><Check size={12}/>Enviado</span> : <span className="pending-badge">Pendente</span>}{lead.sent_at && <small>{lead.sent_at}</small>}</td>
-                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}<button className="delete-action" onClick={() => deleteLead(lead)} title="Arquivar lead"><Trash2 size={15}/></button></div></td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}<button className="delete-action" onClick={() => deleteLead(lead)} title="Arquivar lead"><Trash2 size={15}/></button></div></td>
               </tr>)}</tbody>
             </table>
             {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}
