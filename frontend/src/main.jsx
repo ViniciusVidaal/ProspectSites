@@ -113,7 +113,7 @@ function App() {
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(() => !localStorage.getItem(LEADS_CACHE));
-  const [stats, setStats] = useState(() => readCache(STATS_CACHE, { archived: 0 }));
+  const [stats, setStats] = useState(() => readCache(STATS_CACHE, { archived: 0, sent: 0, sent_today: 0 }));
   const [sendMode, setSendMode] = useState("manual");
   const [sessionAmount, setSessionAmount] = useState(5);
   const [batchSize, setBatchSize] = useState(5);
@@ -263,14 +263,24 @@ function App() {
 
   const markSent = async (placeId) => {
     const previous = leads;
+    const previousStats = stats;
+    const wasSent = leads.some((lead) => lead.place_id === placeId && lead.sent);
     setLeads((items) => items.map((lead) =>
       lead.place_id === placeId ? { ...lead, sent: true } : lead
     ));
+    if (!wasSent) {
+      setStats((current) => ({
+        ...current,
+        sent: Number(current.sent || 0) + 1,
+        sent_today: Number(current.sent_today || 0) + 1,
+      }));
+    }
     try {
       const updated = await api(`/api/leads/${encodeURIComponent(placeId)}/sent`, { method: "POST" });
       setLeads((items) => items.map((lead) => lead.place_id === placeId ? updated : lead));
     } catch (error) {
       setLeads(previous);
+      setStats(previousStats);
       setNotice(`O WhatsApp foi aberto, mas não foi possível marcar como enviado: ${error.message}`);
     }
   };
@@ -413,7 +423,8 @@ function App() {
 
       <section className="metrics-row">
         <article><span><Users size={18}/></span><div><strong>{leads.length}</strong><small>Leads qualificados</small></div></article>
-        <article><span><MessageCircle size={18}/></span><div><strong>{sentCount}</strong><small>Mensagens enviadas</small></div></article>
+        <article><span><MessageCircle size={18}/></span><div><strong>{stats.sent || 0}</strong><small>Mensagens enviadas</small></div></article>
+        <article><span><CalendarDays size={18}/></span><div><strong>{stats.sent_today || 0}</strong><small>Mensagens enviadas hoje</small></div></article>
         <article><span><ArchiveRestore size={18}/></span><div><strong>{stats.archived || 0}</strong><small>Leads arquivados</small></div></article>
       </section>
 

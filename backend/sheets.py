@@ -227,21 +227,47 @@ class SheetsRepository:
         ).execute()
 
     def archive_many(self, place_ids: list[str]) -> int:
-        archived = 0
-        for place_id in dict.fromkeys(place_ids):
-            try:
-                self.archive(place_id)
-                archived += 1
-            except KeyError:
-                continue
-        return archived
+        self.ensure_sheet()
+        requested = set(dict.fromkeys(place_ids))
+        rows = self.service.spreadsheets().values().get(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"'{self.sheet_name}'!A2:J",
+        ).execute().get("values", [])
+        row_numbers = [
+            index + 2
+            for index, row in enumerate(rows)
+            if (
+                (len(row) > 9 and row[9] in requested)
+                or (len(row) <= 6 and len(row) > 5 and row[5] in requested)
+            )
+        ]
+        if not row_numbers:
+            return 0
+        self.service.spreadsheets().values().batchUpdate(
+            spreadsheetId=self.spreadsheet_id,
+            body={
+                "valueInputOption": "RAW",
+                "data": [
+                    {
+                        "range": f"'{self.sheet_name}'!M{row_number}",
+                        "values": [["Sim"]],
+                    }
+                    for row_number in row_numbers
+                ],
+            },
+        ).execute()
+        return len(row_numbers)
 
     def stats(self) -> dict[str, int]:
         leads = self.list(include_archived=True)
+        today = today_brazil()
         return {
             "total": len(leads),
             "active": sum(not lead.archived for lead in leads),
             "sent": sum(lead.sent for lead in leads),
+            "sent_today": sum(
+                lead.sent and lead.sent_at.startswith(today) for lead in leads
+            ),
             "archived": sum(lead.archived for lead in leads),
         }
 
