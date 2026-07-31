@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Archive, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
+  Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
   Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
   Search, Star, Sun, Trash2, Users
 } from "lucide-react";
@@ -48,6 +48,7 @@ function App() {
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ archived: 0 });
   const [sendMode, setSendMode] = useState("manual");
   const [sessionAmount, setSessionAmount] = useState(5);
   const [batchSize, setBatchSize] = useState(5);
@@ -57,7 +58,11 @@ function App() {
   const [clock, setClock] = useState(Date.now());
 
   const loadLeads = async () => {
-    try { setLeads(await api("/api/leads")); }
+    try {
+      const [leadItems, metrics] = await Promise.all([api("/api/leads"), api("/api/stats")]);
+      setLeads(leadItems);
+      setStats(metrics);
+    }
     catch (error) { setNotice(error.message); }
     finally { setLoading(false); }
   };
@@ -148,6 +153,7 @@ function App() {
     setLeads((items) => items.filter((item) => item.place_id !== lead.place_id));
     try {
       await api(`/api/leads/${encodeURIComponent(lead.place_id)}`, { method: "DELETE" });
+      await loadLeads();
     } catch (error) {
       setLeads(previous);
       setNotice(`Não foi possível arquivar o lead: ${error.message}`);
@@ -166,9 +172,29 @@ function App() {
         method: "POST",
         body: JSON.stringify({ place_ids: ids }),
       });
+      await loadLeads();
     } catch (error) {
       setLeads(previous);
       setNotice(`Não foi possível arquivar os leads de hoje: ${error.message}`);
+    }
+  };
+
+  const archiveSent = async () => {
+    const sentLeads = leads.filter((lead) => lead.sent);
+    if (!sentLeads.length) return setNotice("Não há leads enviados para arquivar.");
+    if (!window.confirm(`Arquivar os ${sentLeads.length} lead(s) já enviados? Eles continuarão salvos no histórico.`)) return;
+    const previous = leads;
+    const ids = sentLeads.map((lead) => lead.place_id);
+    setLeads((items) => items.filter((lead) => !lead.sent));
+    try {
+      await api("/api/leads/archive", {
+        method: "POST",
+        body: JSON.stringify({ place_ids: ids }),
+      });
+      await loadLeads();
+    } catch (error) {
+      setLeads(previous);
+      setNotice(`Não foi possível arquivar os leads enviados: ${error.message}`);
     }
   };
 
@@ -220,6 +246,7 @@ function App() {
       <section className="metrics-row">
         <article><span><Users size={18}/></span><div><strong>{leads.length}</strong><small>Leads qualificados</small></div></article>
         <article><span><MessageCircle size={18}/></span><div><strong>{sentCount}</strong><small>Mensagens enviadas</small></div></article>
+        <article><span><ArchiveRestore size={18}/></span><div><strong>{stats.archived || 0}</strong><small>Leads arquivados</small></div></article>
       </section>
 
       <section className="search-card">
@@ -257,7 +284,7 @@ function App() {
         <div className="leads-panel">
           <div className="panel-head">
             <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Contatos qualificados para abordagem individual.</p></div></div>
-            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
+            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
           </div>
           <div className="table-wrap">
             <table><thead><tr><th>Posição</th><th>Empresa</th><th>Avaliações</th><th>Site atual</th><th>Contato</th><th>Status</th><th>Ações</th></tr></thead>

@@ -236,6 +236,15 @@ class SheetsRepository:
                 continue
         return archived
 
+    def stats(self) -> dict[str, int]:
+        leads = self.list(include_archived=True)
+        return {
+            "total": len(leads),
+            "active": sum(not lead.archived for lead in leads),
+            "sent": sum(lead.sent for lead in leads),
+            "archived": sum(lead.archived for lead in leads),
+        }
+
 
 def today_brazil() -> str:
     return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")

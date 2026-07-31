@@ -69,6 +69,16 @@ def list_leads():
         ) from exc
 
 
+@app.get("/api/stats")
+def lead_stats():
+    try:
+        return repository().stats()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Falha ao calcular métricas: {exc}"
+        ) from exc
+
+
 @app.post("/api/leads/{place_id}/sent")
 def mark_lead_sent(place_id: str):
     try:
