@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
@@ -122,6 +122,7 @@ function App() {
   const [batchPause, setBatchPause] = useState(10);
   const [dispatch, setDispatch] = useState(null);
   const [clock, setClock] = useState(Date.now());
+  const dispatchWindowRef = useRef(null);
 
   const loadLeads = async ({ silent = false, retries = 5 } = {}) => {
     let lastError;
@@ -260,6 +261,11 @@ function App() {
     return `whatsapp://send?phone=${phone}&text=${encodeURIComponent(personalizedMessage)}`;
   };
 
+  const whatsappWebHref = (lead) => whatsappHref(lead).replace(
+    "whatsapp://send",
+    "https://web.whatsapp.com/send"
+  );
+
   const markSent = async (placeId) => {
     const previous = leads;
     setLeads((items) => items.map((lead) =>
@@ -340,20 +346,30 @@ function App() {
       .filter((lead) => !lead.sent && lead.whatsapp_link)
       .slice(0, Math.max(1, Number(sessionAmount) || 1));
     if (!queue.length) return setNotice("Não há leads pendentes com WhatsApp para iniciar a sessão.");
+    const whatsappWindow = window.open("about:blank", "prospect-whatsapp-session");
+    if (!whatsappWindow) {
+      return setNotice("O navegador bloqueou a janela do WhatsApp. Permita pop-ups para este site e tente novamente.");
+    }
+    dispatchWindowRef.current = whatsappWindow;
     setNotice("");
-    setClock(Date.now());
-    setDispatch({ queue, index: 0, sentInBatch: 0, status: "ready", nextAt: 0 });
+    advanceDispatch({ queue, index: 0, sentInBatch: 0, status: "ready", nextAt: 0 }, whatsappWindow);
   };
 
-  const openNextDispatch = () => {
-    if (!dispatch || dispatch.index >= dispatch.queue.length) return;
-    const lead = dispatch.queue[dispatch.index];
-    window.location.href = whatsappHref(lead);
+  const advanceDispatch = (session = dispatch, targetWindow = dispatchWindowRef.current) => {
+    if (!session || session.index >= session.queue.length) return;
+    if (!targetWindow || targetWindow.closed) {
+      setNotice("A janela do WhatsApp Web foi fechada. Inicie uma nova sessão.");
+      setDispatch({ ...session, status: "paused", pausedRemaining: 0 });
+      return;
+    }
+    const lead = session.queue[session.index];
+    targetWindow.location.href = whatsappWebHref(lead);
+    targetWindow.focus();
     markSent(lead.place_id);
-    const nextIndex = dispatch.index + 1;
-    const nextBatchCount = dispatch.sentInBatch + 1;
-    if (nextIndex >= dispatch.queue.length) {
-      setDispatch({ ...dispatch, index: nextIndex, sentInBatch: nextBatchCount, status: "completed", nextAt: 0 });
+    const nextIndex = session.index + 1;
+    const nextBatchCount = session.sentInBatch + 1;
+    if (nextIndex >= session.queue.length) {
+      setDispatch({ ...session, index: nextIndex, sentInBatch: nextBatchCount, status: "completed", nextAt: 0 });
       return;
     }
     const closesBatch = nextBatchCount >= Math.max(1, Number(batchSize) || 1);
@@ -368,10 +384,10 @@ function App() {
     const nextAt = Date.now() + waitingSeconds * 1000;
     setClock(Date.now());
     setDispatch({
-      ...dispatch,
+      ...session,
       index: nextIndex,
       sentInBatch: closesBatch ? 0 : nextBatchCount,
-      status: nextAt > Date.now() ? "waiting" : "ready",
+      status: "waiting",
       nextAt,
       waitingType: closesBatch ? "batch" : "message",
     });
@@ -382,6 +398,12 @@ function App() {
     : 0;
   const dispatchReady = dispatch?.status === "waiting" && remainingSeconds === 0;
   const countdownLabel = `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
+
+  useEffect(() => {
+    if (dispatch?.status === "waiting" && remainingSeconds === 0) {
+      advanceDispatch(dispatch);
+    }
+  }, [dispatch?.status, dispatch?.nextAt, clock]);
 
   if (authStatus === "checking") {
     return <main className="auth-loading"><LoaderCircle className="spin" size={28}/><span>Verificando acesso...</span></main>;
@@ -466,22 +488,21 @@ function App() {
               <label><span>Intervalo máximo</span><div className="number-unit"><input type="number" min="0" max="1440" value={messageIntervalMax} onChange={(event) => setMessageIntervalMax(event.target.value)}/><small>min</small></div></label>
               <label><span>Pausa entre lotes</span><div className="number-unit"><input type="number" min="0" max="1440" value={batchPause} onChange={(event) => setBatchPause(event.target.value)}/><small>min</small></div></label>
             </div>
-            {!dispatch && <button className="dispatch-primary" onClick={startDispatch}><Play size={16}/>Preparar sessão</button>}
+            {!dispatch && <button className="dispatch-primary" onClick={startDispatch}><Play size={16}/>Iniciar no WhatsApp Web</button>}
             {dispatch && <div className="dispatch-status">
               <div className="dispatch-progress"><span>Progresso</span><strong>{Math.min(dispatch.index, dispatch.queue.length)}/{dispatch.queue.length}</strong></div>
               {dispatch.status === "completed" ? <div className="session-complete"><Check size={17}/>Sessão concluída</div> : <>
                 <div className="next-lead"><small>Próximo lead</small><strong>{dispatch.queue[dispatch.index]?.company_name}</strong></div>
                 {dispatch.status === "waiting" && !dispatchReady && <div className="countdown"><Clock size={17}/><div><small>{dispatch.waitingType === "batch" ? "Pausa do lote" : "Próxima mensagem"}</small><strong>{countdownLabel}</strong></div></div>}
                 {dispatch.status === "paused" && <div className="countdown"><Pause size={17}/><div><small>Sessão pausada</small><strong>{`${String(Math.floor((dispatch.pausedRemaining || 0) / 60)).padStart(2, "0")}:${String((dispatch.pausedRemaining || 0) % 60).padStart(2, "0")}`}</strong></div></div>}
-                <button className="dispatch-primary" disabled={dispatch.status === "paused" || (dispatch.status === "waiting" && !dispatchReady)} onClick={openNextDispatch}><MessageCircle size={16}/>Abrir próximo no WhatsApp</button>
                 <div className="dispatch-actions">
-                  {dispatch.status === "paused" ? <button onClick={() => { const seconds = dispatch.pausedRemaining || 0; setClock(Date.now()); setDispatch({ ...dispatch, status: seconds ? "waiting" : "ready", nextAt: Date.now() + seconds * 1000 }); }}><Play size={14}/>Retomar</button> : <button onClick={() => setDispatch({ ...dispatch, status: "paused", pausedRemaining: remainingSeconds })}><Pause size={14}/>Pausar</button>}
+                  {dispatch.status === "paused" ? <button onClick={() => { const seconds = dispatch.pausedRemaining || 0; setClock(Date.now()); setDispatch({ ...dispatch, status: "waiting", nextAt: Date.now() + seconds * 1000 }); }}><Play size={14}/>Retomar</button> : <button onClick={() => setDispatch({ ...dispatch, status: "paused", pausedRemaining: remainingSeconds })}><Pause size={14}/>Pausar</button>}
                   <button onClick={() => setDispatch(null)}><RotateCcw size={14}/>Encerrar</button>
                 </div>
               </>}
               {dispatch.status === "completed" && <button className="dispatch-secondary" onClick={() => setDispatch(null)}><RotateCcw size={14}/>Nova sessão</button>}
             </div>}
-            <div className="manual-note"><Clock size={16}/><p>O painel sorteia um novo intervalo entre o mínimo e o máximo após cada contato. A pausa entre lotes continua fixa.</p></div>
+            <div className="manual-note"><Clock size={16}/><p>Inicie uma vez e permaneça no WhatsApp Web. Ao terminar cada intervalo, a próxima conversa será carregada automaticamente com a mensagem preenchida.</p></div>
           </div>}
         </aside>
       </section>
