@@ -1,11 +1,12 @@
 import asyncio
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .models import ArchiveRequest, Job, SearchRequest
+from .auth import authenticate, create_access_token, require_auth
+from .models import ArchiveRequest, Job, LoginRequest, SearchRequest
 from .places import search_eligible_profiles
 from .sheets import SheetsRepository
 
@@ -27,6 +28,22 @@ except RuntimeError:
 
 def repository() -> SheetsRepository:
     return SheetsRepository(get_settings())
+
+
+@app.post("/api/auth/login")
+def login(request: LoginRequest):
+    if not authenticate(request.email, request.password):
+        raise HTTPException(status_code=401, detail="E-mail ou senha incorretos.")
+    return {
+        "access_token": create_access_token(request.email),
+        "token_type": "bearer",
+        "expires_in": 43200,
+    }
+
+
+@app.get("/api/auth/me")
+def auth_me(email: str = Depends(require_auth)):
+    return {"email": email}
 
 
 @app.get("/")
@@ -60,7 +77,7 @@ def health():
 
 
 @app.get("/api/leads")
-def list_leads():
+def list_leads(_: str = Depends(require_auth)):
     try:
         return repository().list()
     except Exception as exc:
@@ -70,7 +87,7 @@ def list_leads():
 
 
 @app.get("/api/stats")
-def lead_stats():
+def lead_stats(_: str = Depends(require_auth)):
     try:
         return repository().stats()
     except Exception as exc:
@@ -80,7 +97,7 @@ def lead_stats():
 
 
 @app.post("/api/leads/{place_id}/sent")
-def mark_lead_sent(place_id: str):
+def mark_lead_sent(place_id: str, _: str = Depends(require_auth)):
     try:
         return repository().mark_sent(place_id)
     except KeyError as exc:
@@ -92,7 +109,7 @@ def mark_lead_sent(place_id: str):
 
 
 @app.delete("/api/leads/{place_id}")
-def delete_lead(place_id: str):
+def delete_lead(place_id: str, _: str = Depends(require_auth)):
     try:
         repository().archive(place_id)
         return {"status": "archived", "place_id": place_id}
@@ -105,7 +122,7 @@ def delete_lead(place_id: str):
 
 
 @app.post("/api/leads/archive")
-def archive_leads(request: ArchiveRequest):
+def archive_leads(request: ArchiveRequest, _: str = Depends(require_auth)):
     try:
         count = repository().archive_many(request.place_ids)
         return {"status": "archived", "count": count}
@@ -116,7 +133,7 @@ def archive_leads(request: ArchiveRequest):
 
 
 @app.get("/api/jobs/{job_id}")
-def get_job(job_id: str):
+def get_job(job_id: str, _: str = Depends(require_auth)):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
     return jobs[job_id]
@@ -156,7 +173,9 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
 
 @app.post("/api/search", status_code=202)
 async def start_search(
-    request: SearchRequest, background_tasks: BackgroundTasks
+    request: SearchRequest,
+    background_tasks: BackgroundTasks,
+    _: str = Depends(require_auth),
 ):
     job_id = str(uuid4())
     jobs[job_id] = Job(id=job_id, kind="search", status="queued")

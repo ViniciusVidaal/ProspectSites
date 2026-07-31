@@ -53,7 +53,26 @@ main { max-width: 1500px; margin: auto; padding: 0 30px 50px; }
 .topbar { height: 74px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 10px; font: 700 18px Manrope; }
 .brand span, .panel-title > span { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--accent); color: var(--accent-text); }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.header-actions > small { max-width: 220px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 10px; }
 .theme-toggle { height: 40px; padding: 0 13px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+.logout-button { height: 40px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--danger); }
+
+.auth-loading { min-height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: var(--muted); }
+.login-page { min-height: 100vh; max-width: none; padding: 24px; display: grid; place-items: center; background: radial-gradient(circle at 50% 15%, var(--accent-soft), transparent 38%), var(--bg); }
+.login-card { width: min(100%, 430px); padding: 30px; border: 1px solid var(--line); border-radius: 22px; background: var(--panel); box-shadow: 0 24px 70px rgba(22, 52, 33, .13); }
+.login-brand { display: flex; align-items: center; gap: 11px; }
+.login-brand > span { width: 45px; height: 45px; border-radius: 12px; display: grid; place-items: center; background: var(--accent); color: var(--accent-text); }
+.login-brand strong, .login-brand small { display: block; }
+.login-brand strong { font: 800 18px Manrope; }
+.login-brand small { margin-top: 2px; color: var(--muted); font-size: 10px; }
+.login-copy { margin: 30px 0 22px; }
+.login-copy > span { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 9px; background: var(--accent-soft); color: var(--accent-strong); }
+.login-copy h1 { margin: 12px 0 5px; font: 800 25px Manrope; }
+.login-copy p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.login-form { display: grid; gap: 15px; }
+.login-form .primary { width: 100%; margin-top: 3px; }
+.login-error { padding: 11px 13px; border: 1px solid var(--danger); border-radius: 9px; color: var(--danger); background: var(--danger-soft); font-size: 11px; }
 
 .metrics-row { display: flex; flex-wrap: wrap; gap: 12px; padding: 24px 0; }
 .metrics-row article { min-width: 205px; display: flex; align-items: center; gap: 12px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); box-shadow: var(--shadow); }
@@ -181,6 +200,10 @@ textarea:focus { border-color: var(--accent); }
   .topbar { height: 64px; }
   .theme-toggle span { display: none; }
   .theme-toggle { width: 40px; padding: 0; justify-content: center; }
+  .logout-button { width: 40px; padding: 0; justify-content: center; }
+  .logout-button span, .header-actions > small { display: none; }
+  .login-page { padding: 14px; }
+  .login-card { padding: 22px; }
   .metrics-row { padding: 15px 0; }
   .metrics-row article { flex: 1 1 145px; min-width: 0; padding: 13px; }
   .metrics-row strong { font-size: 20px; }

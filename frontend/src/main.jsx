@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
-  Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
+  Clock, KeyRound, Lock, LogOut, Mail, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
   Search, Star, Sun, Trash2, Users
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
@@ -12,6 +12,7 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const LEADS_CACHE = "prospect-leads-cache";
 const STATS_CACHE = "prospect-stats-cache";
 const MESSAGE_CACHE = "prospect-message-template";
+const AUTH_TOKEN = "prospect-auth-token";
 const DEFAULT_MESSAGE = `Opa, **[Empresa]**. Estava analisando o perfil de vocês no Google e vi que vocês já conquistaram **[AVALIAÇÕES] avaliações** e mantêm uma nota de **[NOTA]⭐** no Google. Mas notei um problema grave: vocês estão perdendo clientes todos os dias por não ter um site oficial.
 
 Muita gente acha a empresa no mapa, procura o site pra confirmar a credibilidade e, como não acha, fecha com a concorrência.
@@ -38,9 +39,14 @@ function readableError(detail) {
 }
 
 async function api(path, options) {
+  const token = localStorage.getItem(AUTH_TOKEN);
   const response = await fetch(`${API}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options?.headers || {}),
+    },
   });
   const body = await response.json();
   if (!response.ok) {
@@ -51,7 +57,45 @@ async function api(path, options) {
   return body;
 }
 
+function LoginScreen({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const session = await api("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      localStorage.setItem(AUTH_TOKEN, session.access_token);
+      onLogin(email);
+    } catch (loginError) {
+      setError(loginError.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return <main className="login-page"><section className="login-card">
+    <div className="login-brand"><span><Radar size={23}/></span><div><strong>Prospect Sites</strong><small>Acesso administrativo</small></div></div>
+    <div className="login-copy"><span><Lock size={18}/></span><h1>Entre no seu painel</h1><p>Use suas credenciais para acessar os leads e pesquisas.</p></div>
+    <form onSubmit={submit} className="login-form">
+      <label><span>E-mail</span><div className="input-shell"><Mail size={17}/><input type="email" required autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="seu@email.com"/></div></label>
+      <label><span>Senha</span><div className="input-shell"><KeyRound size={17}/><input type="password" required minLength="8" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Sua senha"/></div></label>
+      {error && <div className="login-error">{error}</div>}
+      <button className="primary" disabled={submitting}>{submitting ? <LoaderCircle className="spin" size={17}/> : <Lock size={17}/>} {submitting ? "Entrando..." : "Entrar"}</button>
+    </form>
+  </section></main>;
+}
+
 function App() {
+  const [authStatus, setAuthStatus] = useState("checking");
+  const [authEmail, setAuthEmail] = useState("");
   const [leads, setLeads] = useState(() => readCache(LEADS_CACHE, []));
   const [mode, setMode] = useState("free");
   const [query, setQuery] = useState("");
@@ -104,7 +148,28 @@ function App() {
     setLoading(false);
   };
 
-  useEffect(() => { loadLeads({ silent: leads.length > 0 }); }, []);
+  useEffect(() => {
+    const token = localStorage.getItem(AUTH_TOKEN);
+    if (!token) {
+      setAuthStatus("guest");
+      return;
+    }
+    api("/api/auth/me")
+      .then((account) => {
+        setAuthEmail(account.email);
+        setAuthStatus("authenticated");
+      })
+      .catch(() => {
+        localStorage.removeItem(AUTH_TOKEN);
+        setAuthStatus("guest");
+      });
+  }, []);
+
+  useEffect(() => {
+    if (authStatus === "authenticated") {
+      loadLeads({ silent: leads.length > 0 });
+    }
+  }, [authStatus]);
 
   useEffect(() => {
     localStorage.setItem(LEADS_CACHE, JSON.stringify(leads));
@@ -259,6 +324,16 @@ function App() {
     }
   };
 
+  const logout = () => {
+    localStorage.removeItem(AUTH_TOKEN);
+    localStorage.removeItem(LEADS_CACHE);
+    localStorage.removeItem(STATS_CACHE);
+    setLeads([]);
+    setStats({ archived: 0 });
+    setAuthEmail("");
+    setAuthStatus("guest");
+  };
+
   const startDispatch = () => {
     const queue = leads
       .filter((lead) => !lead.sent && lead.whatsapp_link)
@@ -300,9 +375,17 @@ function App() {
   const dispatchReady = dispatch?.status === "waiting" && remainingSeconds === 0;
   const countdownLabel = `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
 
+  if (authStatus === "checking") {
+    return <main className="auth-loading"><LoaderCircle className="spin" size={28}/><span>Verificando acesso...</span></main>;
+  }
+
+  if (authStatus !== "authenticated") {
+    return <LoginScreen onLogin={(email) => { setAuthEmail(email); setAuthStatus("authenticated"); }}/>
+  }
+
   return (
     <main>
-      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
+      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><div className="header-actions"><small>{authEmail}</small><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button><button className="logout-button" onClick={logout} title="Sair"><LogOut size={17}/><span>Sair</span></button></div></header>
 
       <section className="metrics-row">
         <article><span><Users size={18}/></span><div><strong>{leads.length}</strong><small>Leads qualificados</small></div></article>
