@@ -117,7 +117,8 @@ function App() {
   const [sendMode, setSendMode] = useState("manual");
   const [sessionAmount, setSessionAmount] = useState(5);
   const [batchSize, setBatchSize] = useState(5);
-  const [messageInterval, setMessageInterval] = useState(5);
+  const [messageIntervalMin, setMessageIntervalMin] = useState(1);
+  const [messageIntervalMax, setMessageIntervalMax] = useState(10);
   const [batchPause, setBatchPause] = useState(10);
   const [dispatch, setDispatch] = useState(null);
   const [clock, setClock] = useState(Date.now());
@@ -356,8 +357,15 @@ function App() {
       return;
     }
     const closesBatch = nextBatchCount >= Math.max(1, Number(batchSize) || 1);
-    const waitingMinutes = closesBatch ? Number(batchPause) : Number(messageInterval);
-    const nextAt = Date.now() + Math.max(0, waitingMinutes || 0) * 60000;
+    const minimumSeconds = Math.max(0, Number(messageIntervalMin) || 0) * 60;
+    const maximumSeconds = Math.max(minimumSeconds, Math.max(0, Number(messageIntervalMax) || 0) * 60);
+    const randomSeconds = Math.floor(
+      minimumSeconds + Math.random() * (maximumSeconds - minimumSeconds + 1)
+    );
+    const waitingSeconds = closesBatch
+      ? Math.max(0, Number(batchPause) || 0) * 60
+      : randomSeconds;
+    const nextAt = Date.now() + waitingSeconds * 1000;
     setClock(Date.now());
     setDispatch({
       ...dispatch,
@@ -454,7 +462,8 @@ function App() {
             <div className="dispatch-grid">
               <label><span>Quantidade nesta sessão</span><input type="number" min="1" max="500" value={sessionAmount} onChange={(event) => setSessionAmount(event.target.value)}/></label>
               <label><span>Mensagens por lote</span><input type="number" min="1" max="100" value={batchSize} onChange={(event) => setBatchSize(event.target.value)}/></label>
-              <label><span>Intervalo entre mensagens</span><div className="number-unit"><input type="number" min="0" max="1440" value={messageInterval} onChange={(event) => setMessageInterval(event.target.value)}/><small>min</small></div></label>
+              <label><span>Intervalo mínimo</span><div className="number-unit"><input type="number" min="0" max="1440" value={messageIntervalMin} onChange={(event) => setMessageIntervalMin(event.target.value)}/><small>min</small></div></label>
+              <label><span>Intervalo máximo</span><div className="number-unit"><input type="number" min="0" max="1440" value={messageIntervalMax} onChange={(event) => setMessageIntervalMax(event.target.value)}/><small>min</small></div></label>
               <label><span>Pausa entre lotes</span><div className="number-unit"><input type="number" min="0" max="1440" value={batchPause} onChange={(event) => setBatchPause(event.target.value)}/><small>min</small></div></label>
             </div>
             {!dispatch && <button className="dispatch-primary" onClick={startDispatch}><Play size={16}/>Preparar sessão</button>}
@@ -472,7 +481,7 @@ function App() {
               </>}
               {dispatch.status === "completed" && <button className="dispatch-secondary" onClick={() => setDispatch(null)}><RotateCcw size={14}/>Nova sessão</button>}
             </div>}
-            <div className="manual-note"><Clock size={16}/><p>O painel controla a cadência e libera uma conversa por vez. Confira a mensagem e clique em enviar dentro do WhatsApp Web.</p></div>
+            <div className="manual-note"><Clock size={16}/><p>O painel sorteia um novo intervalo entre o mínimo e o máximo após cada contato. A pausa entre lotes continua fixa.</p></div>
           </div>}
         </aside>
       </section>
