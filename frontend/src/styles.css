@@ -136,8 +136,10 @@ html[data-theme="dark"] .whatsapp-action.sent { background: #253329; color: #88d
 
 aside { align-self: start; position: sticky; top: 16px; padding: 22px; }
 .message-label { display: block; margin-top: 22px; }
-textarea { width: 100%; height: 190px; padding: 13px; border: 1px solid var(--input-line); border-radius: 11px; outline: 0; resize: vertical; background: var(--soft); color: var(--text); line-height: 1.55; }
+textarea { width: 100%; height: 320px; padding: 13px; border: 1px solid var(--input-line); border-radius: 11px; outline: 0; resize: vertical; background: var(--soft); color: var(--text); line-height: 1.55; }
 textarea:focus { border-color: var(--accent); }
+.template-tip { display: block; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.template-tip b { color: var(--accent-strong); }
 .send-mode { display: flex; gap: 4px; margin-top: 20px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
 .send-mode button { flex: 1; height: 35px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; }
 .send-mode button.active { background: var(--panel); color: var(--text); box-shadow: 0 2px 10px rgba(20, 40, 28, .08); }

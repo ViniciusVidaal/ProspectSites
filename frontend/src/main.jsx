@@ -56,7 +56,21 @@ function App() {
     () => localStorage.getItem("prospect-theme") || "light"
   );
   const [message, setMessage] = useState(
-    "Olá! Encontrei sua empresa no Google e gostaria de apresentar uma ideia para melhorar sua presença online. Posso te mostrar?"
+    `Olá, tudo bem?
+
+Estava analisando o perfil da **[Empresa]** no Google e vi que vocês já conquistaram uma ótima reputação por lá. Parabéns!
+
+Só notei uma oportunidade que talvez esteja fazendo vocês perderem alguns clientes: ainda não existe um site oficial da empresa.
+
+Muita gente encontra um negócio no Google, procura um site para conhecer melhor a empresa e, quando não encontra, acaba seguindo para outra opção.
+
+Eu trabalho ajudando empresas a resolver exatamente isso.
+
+Faço um site profissional por **R$ 497**, com **1 ano de hospedagem grátis** (você só precisa registrar o domínio).
+
+Se fizer sentido para vocês, posso preparar uma prévia personalizada, sem compromisso, para mostrar como o site poderia ficar.
+
+Se tiver interesse, é só responder **"quero ver"**.`
   );
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
@@ -168,7 +182,11 @@ function App() {
   const whatsappHref = (lead) => {
     if (!lead.whatsapp_link) return "";
     const separator = lead.whatsapp_link.includes("?") ? "&" : "?";
-    return `${lead.whatsapp_link}${separator}text=${encodeURIComponent(message.trim())}`;
+    const personalizedMessage = message.replace(
+      /\[empresa\]/gi,
+      lead.company_name
+    ).trim();
+    return `${lead.whatsapp_link}${separator}text=${encodeURIComponent(personalizedMessage)}`;
   };
 
   const markSent = async (placeId) => {
@@ -343,7 +361,7 @@ function App() {
         <aside>
           <div className="panel-title"><span><MessageCircle size={19}/></span><div><h2>Mensagem</h2><p>Texto preenchido no WhatsApp.</p></div></div>
           <div className="send-mode"><button className={sendMode === "manual" ? "active" : ""} onClick={() => setSendMode("manual")}>Manual</button><button className={sendMode === "assisted" ? "active" : ""} onClick={() => setSendMode("assisted")}>Sessão assistida</button></div>
-          <label className="message-label"><span>Mensagem de abordagem</span><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="2000"/></label>
+          <label className="message-label"><span>Mensagem de abordagem</span><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="3000"/><small className="template-tip">Use <b>[Empresa]</b> em qualquer parte do texto. O sistema substituirá pelo nome de cada lead.</small></label>
           {sendMode === "manual" ? <div className="manual-note"><MessageCircle size={16}/><p>Use o botão “Abrir WhatsApp” de cada lead. A mensagem será preenchida e o envio continuará sob sua confirmação.</p></div> : <div className="dispatch-box">
             <div className="dispatch-grid">
               <label><span>Quantidade nesta sessão</span><input type="number" min="1" max="500" value={sessionAmount} onChange={(event) => setSessionAmount(event.target.value)}/></label>
