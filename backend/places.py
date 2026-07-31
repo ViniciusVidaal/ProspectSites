@@ -112,7 +112,9 @@ async def search_eligible_profiles(
                 reviews = int(place.get("userRatingCount", 0) or 0)
                 website = place.get("websiteUri", "")
                 platform = platform_from_url(website)
-                if reviews <= minimum_reviews or not platform:
+                if reviews <= minimum_reviews:
+                    continue
+                if website and not platform:
                     continue
                 if place.get("businessStatus") == "CLOSED_PERMANENTLY":
                     continue
@@ -131,7 +133,7 @@ async def search_eligible_profiles(
                         phone=phone,
                         whatsapp_link=whatsapp_url(phone),
                         current_site=website,
-                        site_platform=platform,
+                        site_platform=platform or "Sem site",
                         review_count=reviews,
                         rating=float(place.get("rating", 0) or 0),
                         maps_link=place.get("googleMapsUri", ""),

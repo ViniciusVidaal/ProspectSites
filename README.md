@@ -9,8 +9,9 @@ Uma empresa é salva quando:
 
 - possui mais de 50 avaliações no Google;
 - tem telefone cadastrado, quando disponível;
-- o campo de site aponta para Instagram, Facebook, LinkedIn, Linktree, WhatsApp,
-  TikTok, YouTube, Google Sites, Canva Site, Wix gratuito ou plataforma semelhante.
+- não possui site; ou o campo de site aponta para Instagram, Facebook, LinkedIn,
+  Linktree, WhatsApp, TikTok, YouTube, Google Sites, Canva Site, Wix gratuito ou
+  plataforma semelhante.
 
 A busca usa diretamente a Google Places API (New), sem scraping de anúncios,
 navegador automatizado, CAPTCHA ou SerpApi. Até três páginas de 20 perfis são
@@ -20,6 +21,8 @@ consultadas por pesquisa.
 
 O usuário escreve a mensagem no painel e clica em `Abrir WhatsApp` no lead
 desejado. O WhatsApp abre com o texto preenchido, mas o envio permanece manual.
+Ao abrir a conversa, o lead é marcado como enviado no Google Sheets e o contador
+de mensagens do painel é atualizado.
 
 ## Desenvolvimento local
 

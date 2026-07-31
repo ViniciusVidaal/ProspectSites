@@ -69,6 +69,18 @@ def list_leads():
         ) from exc
 
 
+@app.post("/api/leads/{place_id}/sent")
+def mark_lead_sent(place_id: str):
+    try:
+        return repository().mark_sent(place_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Falha ao atualizar Google Sheets: {exc}"
+        ) from exc
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str):
     if job_id not in jobs:

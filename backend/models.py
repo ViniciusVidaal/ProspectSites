@@ -32,6 +32,8 @@ class Lead(BaseModel):
     rating: float = 0
     maps_link: str = ""
     place_id: str
+    sent: bool = False
+    sent_at: str = ""
 
 
 class Job(BaseModel):

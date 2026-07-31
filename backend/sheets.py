@@ -20,6 +20,8 @@ HEADERS = [
     "Nota",
     "Google Maps",
     "Place ID",
+    "Enviado",
+    "Data do Envio",
 ]
 
 
@@ -57,7 +59,7 @@ class SheetsRepository:
                 },
             ).execute()
 
-        header_range = f"'{self.sheet_name}'!A1:J1"
+        header_range = f"'{self.sheet_name}'!A1:L1"
         current = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id, range=header_range
         ).execute().get("values", [])
@@ -73,7 +75,7 @@ class SheetsRepository:
         self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A2:J",
+            range=f"'{self.sheet_name}'!A2:L",
         ).execute().get("values", [])
         leads = []
         for row in rows:
@@ -89,7 +91,7 @@ class SheetsRepository:
                     )
                 )
                 continue
-            padded = row + [""] * (10 - len(row))
+            padded = row + [""] * (12 - len(row))
             if padded[9]:
                 leads.append(
                     Lead(
@@ -103,6 +105,10 @@ class SheetsRepository:
                         rating=float(str(padded[7] or 0).replace(",", ".")),
                         maps_link=padded[8],
                         place_id=padded[9],
+                        sent=str(padded[10]).strip().lower() in {
+                            "sim", "true", "1", "enviado"
+                        },
+                        sent_at=padded[11],
                     )
                 )
         return leads
@@ -124,17 +130,51 @@ class SheetsRepository:
                 lead.rating,
                 lead.maps_link,
                 lead.place_id,
+                "Sim" if lead.sent else "Não",
+                lead.sent_at,
             ]
             for lead in fresh
         ]
         self.service.spreadsheets().values().append(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A:J",
+            range=f"'{self.sheet_name}'!A:L",
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": values},
         ).execute()
         return fresh
+
+    def mark_sent(self, place_id: str) -> Lead:
+        leads = self.list()
+        lead = next((item for item in leads if item.place_id == place_id), None)
+        if not lead:
+            raise KeyError("Lead não encontrado.")
+
+        values = self.service.spreadsheets().values().get(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"'{self.sheet_name}'!J2:J",
+        ).execute().get("values", [])
+        row_number = next(
+            (
+                index + 2
+                for index, row in enumerate(values)
+                if row and row[0] == place_id
+            ),
+            None,
+        )
+        if row_number is None:
+            raise KeyError("Lead não encontrado na planilha.")
+
+        sent_at = datetime.now(
+            ZoneInfo("America/Sao_Paulo")
+        ).strftime("%d/%m/%Y %H:%M")
+        self.service.spreadsheets().values().update(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"'{self.sheet_name}'!K{row_number}:L{row_number}",
+            valueInputOption="RAW",
+            body={"values": [["Sim", sent_at]]},
+        ).execute()
+        return lead.model_copy(update={"sent": True, "sent_at": sent_at})
 
 
 def today_brazil() -> str:

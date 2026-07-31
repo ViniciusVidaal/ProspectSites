@@ -1,25 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Building2, CalendarDays, ExternalLink, LoaderCircle, MapPinned,
-  MessageCircle, Radar, Search, Sparkles, Star, Users
+  Building2, CalendarDays, Check, ExternalLink, LoaderCircle, MapPin,
+  MapPinned, MessageCircle, Radar, Search, Star, Users
 } from "lucide-react";
+import { ALL_NICHES, NICHE_CATEGORIES } from "./niches";
 import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-class ApiError extends Error {
-  constructor(message, status) {
-    super(message);
-    this.status = status;
-  }
-}
-
-function errorMessage(detail) {
+function readableError(detail) {
   if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail.map((item) => item?.msg || "Dados inválidos").join(" · ");
-  }
+  if (Array.isArray(detail)) return detail.map((item) => item?.msg || "Dados inválidos").join(" · ");
   return detail?.message || "Não foi possível concluir.";
 }
 
@@ -29,14 +21,24 @@ async function api(path, options) {
     ...options,
   });
   const body = await response.json();
-  if (!response.ok) throw new ApiError(errorMessage(body.detail), response.status);
+  if (!response.ok) {
+    const error = new Error(readableError(body.detail));
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 
 function App() {
   const [leads, setLeads] = useState([]);
+  const [mode, setMode] = useState("free");
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [selectedNiche, setSelectedNiche] = useState("");
+  const [city, setCity] = useState("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [category, setCategory] = useState("Todos");
+  const [nicheFilter, setNicheFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("all");
   const [message, setMessage] = useState(
     "Olá! Encontrei sua empresa no Google e gostaria de apresentar uma ideia para melhorar sua presença online. Posso te mostrar?"
   );
@@ -45,13 +47,9 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   const loadLeads = async () => {
-    try {
-      setLeads(await api("/api/leads"));
-    } catch (error) {
-      setNotice(error.message);
-    } finally {
-      setLoading(false);
-    }
+    try { setLeads(await api("/api/leads")); }
+    catch (error) { setNotice(error.message); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { loadLeads(); }, []);
@@ -65,13 +63,7 @@ function App() {
         if (current.status === "completed") loadLeads();
       } catch (error) {
         setNotice(error.message);
-        setJob((current) => current ? {
-          ...current,
-          status: "failed",
-          detail: error.status === 404
-            ? "A tarefa foi interrompida porque o servidor reiniciou."
-            : error.message,
-        } : current);
+        setJob((current) => current ? { ...current, status: "failed", detail: error.message } : current);
       }
     }, 1500);
     return () => clearInterval(timer);
@@ -79,21 +71,31 @@ function App() {
 
   const today = new Intl.DateTimeFormat("pt-BR").format(new Date());
   const visible = useMemo(
-    () => leads.filter((lead) => filter === "all" || lead.date === today),
-    [leads, filter, today]
+    () => leads.filter((lead) => dateFilter === "all" || lead.date === today),
+    [leads, dateFilter, today]
   );
+  const sentCount = leads.filter((lead) => lead.sent).length;
+  const busy = job && !["completed", "failed"].includes(job.status);
+
+  const filteredNiches = useMemo(() => ALL_NICHES.filter((item) => {
+    const categoryMatches = category === "Todos" || item.category === category;
+    const textMatches = item.name.toLowerCase().includes(nicheFilter.toLowerCase());
+    return categoryMatches && textMatches;
+  }), [category, nicheFilter]);
 
   const search = async (event) => {
     event.preventDefault();
+    const finalQuery = mode === "free"
+      ? query.trim()
+      : [selectedNiche, neighborhood, city].filter(Boolean).join(" ").trim();
+    if (finalQuery.length < 2) return setNotice("Preencha os dados da pesquisa.");
     setNotice("");
     try {
       setJob(await api("/api/search", {
         method: "POST",
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query: finalQuery }),
       }));
-    } catch (error) {
-      setNotice(error.message);
-    }
+    } catch (error) { setNotice(error.message); }
   };
 
   const whatsappHref = (lead) => {
@@ -102,82 +104,95 @@ function App() {
     return `${lead.whatsapp_link}${separator}text=${encodeURIComponent(message.trim())}`;
   };
 
-  const busy = job && !["completed", "failed"].includes(job.status);
+  const markSent = async (placeId) => {
+    const previous = leads;
+    setLeads((items) => items.map((lead) =>
+      lead.place_id === placeId ? { ...lead, sent: true } : lead
+    ));
+    try {
+      const updated = await api(`/api/leads/${encodeURIComponent(placeId)}/sent`, { method: "POST" });
+      setLeads((items) => items.map((lead) => lead.place_id === placeId ? updated : lead));
+    } catch (error) {
+      setLeads(previous);
+      setNotice(`O WhatsApp foi aberto, mas não foi possível marcar como enviado: ${error.message}`);
+    }
+  };
 
   return (
     <main>
-      <header className="topbar">
-        <a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a>
-        <div className="status"><i/> Google Places conectado</div>
-      </header>
+      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a></header>
 
-      <section className="hero">
-        <div>
-          <div className="eyebrow"><Sparkles size={14}/> Prospecção inteligente</div>
-          <h1>Encontre negócios com<br/><em>presença digital limitada.</em></h1>
-          <p>Mapeie perfis relevantes no Google com mais de 50 avaliações e presença baseada em redes sociais ou plataformas gratuitas.</p>
-        </div>
-        <div className="hero-stat">
-          <span>Leads qualificados</span>
-          <strong>{leads.length}</strong>
-          <small><Users size={14}/> sincronizados via Google Sheets</small>
-        </div>
+      <section className="metrics-row">
+        <article><span><Users size={18}/></span><div><strong>{leads.length}</strong><small>Leads qualificados</small></div></article>
+        <article><span><MessageCircle size={18}/></span><div><strong>{sentCount}</strong><small>Mensagens enviadas</small></div></article>
       </section>
 
       <section className="search-card">
-        <div className="section-title"><span><Search size={20}/></span><div><h2>Nova pesquisa</h2><p>Informe o nicho e a região na mesma palavra-chave.</p></div></div>
+        <div className="panel-title"><span><Search size={19}/></span><div><h1>Nova pesquisa</h1><p>Encontre empresas sem site próprio e com mais de 50 avaliações.</p></div></div>
+        <div className="mode-tabs">
+          <button className={mode === "free" ? "active" : ""} onClick={() => setMode("free")}>Pesquisa livre</button>
+          <button className={mode === "catalog" ? "active" : ""} onClick={() => setMode("catalog")}>Explorar nichos</button>
+        </div>
+
         <form onSubmit={search}>
-          <label><span>Palavra-chave completa</span><div><Building2 size={18}/><input required minLength="2" maxLength="200" value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="Ex: Clínica odontológica Asa Norte Brasília"/></div></label>
-          <button className="primary" disabled={busy}><Radar size={18}/> {busy ? "Pesquisando..." : "Iniciar pesquisa"}</button>
+          {mode === "free" ? (
+            <div className="free-search">
+              <label><span>Palavra-chave completa</span><div className="input-shell"><Building2 size={17}/><input required value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex: Clínica odontológica Asa Norte Brasília"/></div></label>
+              <button className="primary" disabled={busy}><Radar size={17}/>{busy ? "Pesquisando..." : "Pesquisar"}</button>
+            </div>
+          ) : (
+            <div className="catalog-search">
+              <div className="catalog-toolbar">
+                <div className="category-scroll">
+                  {["Todos", ...Object.keys(NICHE_CATEGORIES)].map((item) => <button type="button" key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}
+                </div>
+                <div className="niche-filter"><Search size={15}/><input value={nicheFilter} onChange={(event) => setNicheFilter(event.target.value)} placeholder="Filtrar nichos"/></div>
+              </div>
+              <div className="niche-grid">
+                {filteredNiches.map((item) => <button type="button" key={`${item.category}-${item.name}`} className={selectedNiche === item.name ? "selected" : ""} onClick={() => setSelectedNiche(item.name)}>{selectedNiche === item.name && <Check size={13}/>} {item.name}</button>)}
+              </div>
+              <div className="location-grid">
+                <label><span>Cidade</span><div className="input-shell"><MapPin size={17}/><input required value={city} onChange={(event) => setCity(event.target.value)} placeholder="Ex: Brasília"/></div></label>
+                <label><span>Bairro ou região (opcional)</span><div className="input-shell"><MapPinned size={17}/><input value={neighborhood} onChange={(event) => setNeighborhood(event.target.value)} placeholder="Ex: Asa Norte"/></div></label>
+                <button className="primary" disabled={busy || !selectedNiche || !city}><Radar size={17}/>{busy ? "Pesquisando..." : "Pesquisar nicho"}</button>
+              </div>
+            </div>
+          )}
         </form>
-        <p className="qualification-note">Filtro automático: mais de 50 avaliações + site cadastrado como Instagram, Facebook, LinkedIn, Linktree, WhatsApp ou plataforma semelhante.</p>
       </section>
 
-      {job && <div className={`job ${job.status}`}>
-        <LoaderCircle className={busy ? "spin" : ""} size={18}/>
-        <div><strong>{job.status === "completed" ? "Concluído" : job.status === "failed" ? "Atenção" : "Analisando perfis"}</strong><span>{job.detail || "Preparando pesquisa..."}</span></div>
-        {job.total > 0 && <b>{job.processed}/{job.total}</b>}
-      </div>}
+      {job && <div className={`job ${job.status}`}><LoaderCircle className={busy ? "spin" : ""} size={18}/><div><strong>{job.status === "completed" ? "Concluído" : job.status === "failed" ? "Atenção" : "Analisando perfis"}</strong><span>{job.detail || "Preparando pesquisa..."}</span></div></div>}
       {notice && <div className="notice">{notice}</div>}
 
       <section className="workspace">
         <div className="leads-panel">
           <div className="panel-head">
-            <div className="section-title"><span><Users size={20}/></span><div><h2>Leads encontrados</h2><p>Empresas qualificadas prontas para abordagem individual.</p></div></div>
-            <div className="filters">
-              <button className={filter==="all"?"active":""} onClick={()=>setFilter("all")}>Todos</button>
-              <button className={filter==="today"?"active":""} onClick={()=>setFilter("today")}><CalendarDays size={14}/> Hoje</button>
-            </div>
+            <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Contatos qualificados para abordagem individual.</p></div></div>
+            <div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div>
           </div>
           <div className="table-wrap">
-            <table className="lead-table">
-              <thead><tr><th>Empresa</th><th>Avaliações</th><th>Plataforma</th><th>Contato</th><th>Ações</th></tr></thead>
-              <tbody>
-                {visible.map((lead) => <tr key={lead.place_id}>
-                  <td><strong>{lead.company_name}</strong><small>{lead.date}</small></td>
-                  <td><span className="rating"><Star size={13}/>{lead.rating?.toFixed?.(1) || lead.rating} <b>({lead.review_count})</b></span></td>
-                  <td><a href={lead.current_site} target="_blank" rel="noreferrer" className="platform-tag">{lead.site_platform}<ExternalLink size={12}/></a></td>
-                  <td>{lead.phone || <span className="muted">Não informado</span>}</td>
-                  <td><div className="row-actions">
-                    {lead.maps_link && <a href={lead.maps_link} target="_blank" rel="noreferrer" className="icon-action" title="Abrir no Google Maps"><MapPinned size={16}/></a>}
-                    {lead.whatsapp_link ? <a href={whatsappHref(lead)} target="_blank" rel="noreferrer" className="whatsapp-action"><MessageCircle size={16}/> Abrir WhatsApp</a> : <span className="no-whatsapp">Sem WhatsApp</span>}
-                  </div></td>
-                </tr>)}
-              </tbody>
+            <table><thead><tr><th>Empresa</th><th>Avaliações</th><th>Site atual</th><th>Contato</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody>{visible.map((lead) => <tr key={lead.place_id} className={lead.sent ? "sent-row" : ""}>
+                <td><strong>{lead.company_name}</strong><small>{lead.date}</small></td>
+                <td><span className="rating"><Star size={13}/>{Number(lead.rating || 0).toFixed(1)} <b>({lead.review_count})</b></span></td>
+                <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
+                <td>{lead.phone || <span className="muted">Não informado</span>}</td>
+                <td>{lead.sent ? <span className="sent-badge"><Check size={12}/>Enviado</span> : <span className="pending-badge">Pendente</span>}{lead.sent_at && <small>{lead.sent_at}</small>}</td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : <span className="no-whatsapp">Sem WhatsApp</span>}</div></td>
+              </tr>)}</tbody>
             </table>
-            {!loading && !visible.length && <div className="empty"><Radar size={34}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para analisar os perfis do Google.</span></div>}
+            {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}
           </div>
         </div>
 
         <aside>
-          <div className="section-title"><span><MessageCircle size={20}/></span><div><h2>Mensagem de abordagem</h2><p>Será preenchida no WhatsApp de cada lead.</p></div></div>
-          <label className="message-label"><span>Texto da mensagem</span><textarea value={message} onChange={(event)=>setMessage(event.target.value)} maxLength="2000"/></label>
-          <div className="manual-note"><MessageCircle size={17}/><div><strong>Envio individual e manual</strong><p>Clique em “Abrir WhatsApp” no lead desejado. Revise a mensagem e envie diretamente no WhatsApp.</p></div></div>
-          <p className="legal">Respeite consentimento, opt-out e as políticas comerciais do WhatsApp.</p>
+          <div className="panel-title"><span><MessageCircle size={19}/></span><div><h2>Mensagem</h2><p>Texto preenchido no WhatsApp.</p></div></div>
+          <label className="message-label"><span>Mensagem de abordagem</span><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="2000"/></label>
+          <div className="manual-note"><MessageCircle size={16}/><p>O envio é individual. O lead será marcado como enviado quando você clicar em “Abrir WhatsApp”.</p></div>
         </aside>
       </section>
     </main>
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(<App/>);
