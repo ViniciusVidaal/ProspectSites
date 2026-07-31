@@ -100,7 +100,8 @@ function App() {
     () => leads
       .filter((lead) => dateFilter === "all" || lead.date === today)
       .sort((a, b) =>
-        Number(b.review_count || 0) - Number(a.review_count || 0)
+        Number(a.sent) - Number(b.sent)
+        || Number(b.review_count || 0) - Number(a.review_count || 0)
         || Number(b.rating || 0) - Number(a.rating || 0)
         || a.company_name.localeCompare(b.company_name, "pt-BR")
       ),
