@@ -56,7 +56,7 @@ function App() {
     () => localStorage.getItem("prospect-theme") || "light"
   );
   const [message, setMessage] = useState(
-    `Opa, **[Empresa]**. Estava analisando o perfil de vocês no Google e vi que vocês já conquistaram [AVALIAÇÕES] avaliações e mantêm uma nota de [NOTA]⭐ no Google. Mas notei um problema grave: vocês estão perdendo clientes todos os dias por não ter um site oficial.
+    `Opa, **[Empresa]**. Estava analisando o perfil de vocês no Google e vi que vocês já conquistaram **[AVALIAÇÕES] avaliações** e mantêm uma nota de **[NOTA]⭐** no Google. Mas notei um problema grave: vocês estão perdendo clientes todos os dias por não ter um site oficial.
 
 Muita gente acha a empresa no mapa, procura o site pra confirmar a credibilidade e, como não acha, fecha com a concorrência.
 
