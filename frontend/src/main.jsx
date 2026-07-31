@@ -261,11 +261,6 @@ function App() {
     return `whatsapp://send?phone=${phone}&text=${encodeURIComponent(personalizedMessage)}`;
   };
 
-  const whatsappWebHref = (lead) => whatsappHref(lead).replace(
-    "whatsapp://send",
-    "https://web.whatsapp.com/send"
-  );
-
   const markSent = async (placeId) => {
     const previous = leads;
     setLeads((items) => items.map((lead) =>
@@ -348,7 +343,7 @@ function App() {
     if (!queue.length) return setNotice("Não há leads pendentes com WhatsApp para iniciar a sessão.");
     const whatsappWindow = window.open("about:blank", "prospect-whatsapp-session");
     if (!whatsappWindow) {
-      return setNotice("O navegador bloqueou a janela do WhatsApp. Permita pop-ups para este site e tente novamente.");
+      return setNotice("O navegador bloqueou o iniciador do WhatsApp. Permita pop-ups para este site e tente novamente.");
     }
     dispatchWindowRef.current = whatsappWindow;
     setNotice("");
@@ -363,8 +358,7 @@ function App() {
       return;
     }
     const lead = session.queue[session.index];
-    targetWindow.location.href = whatsappWebHref(lead);
-    targetWindow.focus();
+    targetWindow.location.href = whatsappHref(lead);
     markSent(lead.place_id);
     const nextIndex = session.index + 1;
     const nextBatchCount = session.sentInBatch + 1;
@@ -488,7 +482,7 @@ function App() {
               <label><span>Intervalo máximo</span><div className="number-unit"><input type="number" min="0" max="1440" value={messageIntervalMax} onChange={(event) => setMessageIntervalMax(event.target.value)}/><small>min</small></div></label>
               <label><span>Pausa entre lotes</span><div className="number-unit"><input type="number" min="0" max="1440" value={batchPause} onChange={(event) => setBatchPause(event.target.value)}/><small>min</small></div></label>
             </div>
-            {!dispatch && <button className="dispatch-primary" onClick={startDispatch}><Play size={16}/>Iniciar no WhatsApp Web</button>}
+            {!dispatch && <button className="dispatch-primary" onClick={startDispatch}><Play size={16}/>Iniciar no WhatsApp Desktop</button>}
             {dispatch && <div className="dispatch-status">
               <div className="dispatch-progress"><span>Progresso</span><strong>{Math.min(dispatch.index, dispatch.queue.length)}/{dispatch.queue.length}</strong></div>
               {dispatch.status === "completed" ? <div className="session-complete"><Check size={17}/>Sessão concluída</div> : <>
@@ -502,7 +496,7 @@ function App() {
               </>}
               {dispatch.status === "completed" && <button className="dispatch-secondary" onClick={() => setDispatch(null)}><RotateCcw size={14}/>Nova sessão</button>}
             </div>}
-            <div className="manual-note"><Clock size={16}/><p>Inicie uma vez e permaneça no WhatsApp Web. Ao terminar cada intervalo, a próxima conversa será carregada automaticamente com a mensagem preenchida.</p></div>
+            <div className="manual-note"><Clock size={16}/><p>Inicie uma vez e permaneça no WhatsApp Desktop. Ao terminar cada intervalo, o aplicativo receberá o próximo contato com a mensagem preenchida.</p></div>
           </div>}
         </aside>
       </section>
