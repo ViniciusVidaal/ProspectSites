@@ -9,6 +9,19 @@ import { NICHE_CATEGORIES } from "./niches";
 import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const LEADS_CACHE = "prospect-leads-cache";
+const STATS_CACHE = "prospect-stats-cache";
+
+function readCache(key, fallback) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(key));
+    return cached ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function readableError(detail) {
   if (typeof detail === "string") return detail;
@@ -31,7 +44,7 @@ async function api(path, options) {
 }
 
 function App() {
-  const [leads, setLeads] = useState([]);
+  const [leads, setLeads] = useState(() => readCache(LEADS_CACHE, []));
   const [mode, setMode] = useState("free");
   const [query, setQuery] = useState("");
   const [selectedNiche, setSelectedNiche] = useState("");
@@ -47,8 +60,8 @@ function App() {
   );
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ archived: 0 });
+  const [loading, setLoading] = useState(() => !localStorage.getItem(LEADS_CACHE));
+  const [stats, setStats] = useState(() => readCache(STATS_CACHE, { archived: 0 }));
   const [sendMode, setSendMode] = useState("manual");
   const [sessionAmount, setSessionAmount] = useState(5);
   const [batchSize, setBatchSize] = useState(5);
@@ -57,17 +70,41 @@ function App() {
   const [dispatch, setDispatch] = useState(null);
   const [clock, setClock] = useState(Date.now());
 
-  const loadLeads = async () => {
-    try {
-      const [leadItems, metrics] = await Promise.all([api("/api/leads"), api("/api/stats")]);
-      setLeads(leadItems);
-      setStats(metrics);
+  const loadLeads = async ({ silent = false, retries = 5 } = {}) => {
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        const leadItems = await api("/api/leads");
+        setLeads(leadItems);
+        localStorage.setItem(LEADS_CACHE, JSON.stringify(leadItems));
+        try {
+          const metrics = await api("/api/stats");
+          setStats(metrics);
+          localStorage.setItem(STATS_CACHE, JSON.stringify(metrics));
+        } catch {
+          // Os leads já foram atualizados; a métrica será renovada na próxima tentativa.
+        }
+        setNotice("");
+        setLoading(false);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < retries) await wait(Math.min(2000 + attempt * 1500, 8000));
+      }
     }
-    catch (error) { setNotice(error.message); }
-    finally { setLoading(false); }
+    if (!silent) setNotice(lastError?.message || "Não foi possível atualizar os leads.");
+    setLoading(false);
   };
 
-  useEffect(() => { loadLeads(); }, []);
+  useEffect(() => { loadLeads({ silent: leads.length > 0 }); }, []);
+
+  useEffect(() => {
+    localStorage.setItem(LEADS_CACHE, JSON.stringify(leads));
+  }, [leads]);
+
+  useEffect(() => {
+    localStorage.setItem(STATS_CACHE, JSON.stringify(stats));
+  }, [stats]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
