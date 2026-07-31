@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Archive, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
-  MapPinned, MessageCircle, Moon, Radar, Search, Star, Sun, Trash2, Users
+  Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
+  Search, Star, Sun, Trash2, Users
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
 import "./styles.css";
@@ -47,6 +48,13 @@ function App() {
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
+  const [sendMode, setSendMode] = useState("manual");
+  const [sessionAmount, setSessionAmount] = useState(5);
+  const [batchSize, setBatchSize] = useState(5);
+  const [messageInterval, setMessageInterval] = useState(5);
+  const [batchPause, setBatchPause] = useState(10);
+  const [dispatch, setDispatch] = useState(null);
+  const [clock, setClock] = useState(Date.now());
 
   const loadLeads = async () => {
     try { setLeads(await api("/api/leads")); }
@@ -60,6 +68,12 @@ function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("prospect-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!dispatch || dispatch.status !== "waiting") return;
+    const timer = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [dispatch?.status, dispatch?.nextAt]);
 
   useEffect(() => {
     if (!job || ["completed", "failed"].includes(job.status)) return;
@@ -158,6 +172,47 @@ function App() {
     }
   };
 
+  const startDispatch = () => {
+    const queue = leads
+      .filter((lead) => !lead.sent && lead.whatsapp_link)
+      .slice(0, Math.max(1, Number(sessionAmount) || 1));
+    if (!queue.length) return setNotice("Não há leads pendentes com WhatsApp para iniciar a sessão.");
+    setNotice("");
+    setClock(Date.now());
+    setDispatch({ queue, index: 0, sentInBatch: 0, status: "ready", nextAt: 0 });
+  };
+
+  const openNextDispatch = () => {
+    if (!dispatch || dispatch.index >= dispatch.queue.length) return;
+    const lead = dispatch.queue[dispatch.index];
+    window.open(whatsappHref(lead), "_blank", "noopener,noreferrer");
+    markSent(lead.place_id);
+    const nextIndex = dispatch.index + 1;
+    const nextBatchCount = dispatch.sentInBatch + 1;
+    if (nextIndex >= dispatch.queue.length) {
+      setDispatch({ ...dispatch, index: nextIndex, sentInBatch: nextBatchCount, status: "completed", nextAt: 0 });
+      return;
+    }
+    const closesBatch = nextBatchCount >= Math.max(1, Number(batchSize) || 1);
+    const waitingMinutes = closesBatch ? Number(batchPause) : Number(messageInterval);
+    const nextAt = Date.now() + Math.max(0, waitingMinutes || 0) * 60000;
+    setClock(Date.now());
+    setDispatch({
+      ...dispatch,
+      index: nextIndex,
+      sentInBatch: closesBatch ? 0 : nextBatchCount,
+      status: nextAt > Date.now() ? "waiting" : "ready",
+      nextAt,
+      waitingType: closesBatch ? "batch" : "message",
+    });
+  };
+
+  const remainingSeconds = dispatch?.status === "waiting"
+    ? Math.max(0, Math.ceil((dispatch.nextAt - clock) / 1000))
+    : 0;
+  const dispatchReady = dispatch?.status === "waiting" && remainingSeconds === 0;
+  const countdownLabel = `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
+
   return (
     <main>
       <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
@@ -222,8 +277,32 @@ function App() {
 
         <aside>
           <div className="panel-title"><span><MessageCircle size={19}/></span><div><h2>Mensagem</h2><p>Texto preenchido no WhatsApp.</p></div></div>
+          <div className="send-mode"><button className={sendMode === "manual" ? "active" : ""} onClick={() => setSendMode("manual")}>Manual</button><button className={sendMode === "assisted" ? "active" : ""} onClick={() => setSendMode("assisted")}>Sessão assistida</button></div>
           <label className="message-label"><span>Mensagem de abordagem</span><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="2000"/></label>
-          <div className="manual-note"><MessageCircle size={16}/><p>O envio é individual. O lead será marcado como enviado quando você clicar em “Abrir WhatsApp”.</p></div>
+          {sendMode === "manual" ? <div className="manual-note"><MessageCircle size={16}/><p>Use o botão “Abrir WhatsApp” de cada lead. A mensagem será preenchida e o envio continuará sob sua confirmação.</p></div> : <div className="dispatch-box">
+            <div className="dispatch-grid">
+              <label><span>Quantidade nesta sessão</span><input type="number" min="1" max="500" value={sessionAmount} onChange={(event) => setSessionAmount(event.target.value)}/></label>
+              <label><span>Mensagens por lote</span><input type="number" min="1" max="100" value={batchSize} onChange={(event) => setBatchSize(event.target.value)}/></label>
+              <label><span>Intervalo entre mensagens</span><div className="number-unit"><input type="number" min="0" max="1440" value={messageInterval} onChange={(event) => setMessageInterval(event.target.value)}/><small>min</small></div></label>
+              <label><span>Pausa entre lotes</span><div className="number-unit"><input type="number" min="0" max="1440" value={batchPause} onChange={(event) => setBatchPause(event.target.value)}/><small>min</small></div></label>
+            </div>
+            {!dispatch && <button className="dispatch-primary" onClick={startDispatch}><Play size={16}/>Preparar sessão</button>}
+            {dispatch && <div className="dispatch-status">
+              <div className="dispatch-progress"><span>Progresso</span><strong>{Math.min(dispatch.index, dispatch.queue.length)}/{dispatch.queue.length}</strong></div>
+              {dispatch.status === "completed" ? <div className="session-complete"><Check size={17}/>Sessão concluída</div> : <>
+                <div className="next-lead"><small>Próximo lead</small><strong>{dispatch.queue[dispatch.index]?.company_name}</strong></div>
+                {dispatch.status === "waiting" && !dispatchReady && <div className="countdown"><Clock size={17}/><div><small>{dispatch.waitingType === "batch" ? "Pausa do lote" : "Próxima mensagem"}</small><strong>{countdownLabel}</strong></div></div>}
+                {dispatch.status === "paused" && <div className="countdown"><Pause size={17}/><div><small>Sessão pausada</small><strong>{`${String(Math.floor((dispatch.pausedRemaining || 0) / 60)).padStart(2, "0")}:${String((dispatch.pausedRemaining || 0) % 60).padStart(2, "0")}`}</strong></div></div>}
+                <button className="dispatch-primary" disabled={dispatch.status === "paused" || (dispatch.status === "waiting" && !dispatchReady)} onClick={openNextDispatch}><MessageCircle size={16}/>Abrir próximo no WhatsApp</button>
+                <div className="dispatch-actions">
+                  {dispatch.status === "paused" ? <button onClick={() => { const seconds = dispatch.pausedRemaining || 0; setClock(Date.now()); setDispatch({ ...dispatch, status: seconds ? "waiting" : "ready", nextAt: Date.now() + seconds * 1000 }); }}><Play size={14}/>Retomar</button> : <button onClick={() => setDispatch({ ...dispatch, status: "paused", pausedRemaining: remainingSeconds })}><Pause size={14}/>Pausar</button>}
+                  <button onClick={() => setDispatch(null)}><RotateCcw size={14}/>Encerrar</button>
+                </div>
+              </>}
+              {dispatch.status === "completed" && <button className="dispatch-secondary" onClick={() => setDispatch(null)}><RotateCcw size={14}/>Nova sessão</button>}
+            </div>}
+            <div className="manual-note"><Clock size={16}/><p>O painel controla a cadência e libera uma conversa por vez. Confira a mensagem e clique em enviar dentro do WhatsApp Web.</p></div>
+          </div>}
         </aside>
       </section>
     </main>

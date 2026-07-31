@@ -137,6 +137,32 @@ aside { align-self: start; position: sticky; top: 16px; padding: 22px; }
 .message-label { display: block; margin-top: 22px; }
 textarea { width: 100%; height: 190px; padding: 13px; border: 1px solid var(--input-line); border-radius: 11px; outline: 0; resize: vertical; background: var(--soft); color: var(--text); line-height: 1.55; }
 textarea:focus { border-color: var(--accent); }
+.send-mode { display: flex; gap: 4px; margin-top: 20px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+.send-mode button { flex: 1; height: 35px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; }
+.send-mode button.active { background: var(--panel); color: var(--text); box-shadow: 0 2px 10px rgba(20, 40, 28, .08); }
+.dispatch-box { margin-top: 16px; }
+.dispatch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.dispatch-grid label > span { min-height: 28px; }
+.dispatch-grid input { width: 100%; height: 43px; padding: 0 11px; border: 1px solid var(--input-line); border-radius: 9px; outline: 0; background: var(--soft); color: var(--text); }
+.dispatch-grid input:focus { border-color: var(--accent); }
+.number-unit { position: relative; }
+.number-unit input { padding-right: 42px; }
+.number-unit small { position: absolute; right: 11px; top: 14px; color: var(--muted); font-size: 9px; }
+.dispatch-primary, .dispatch-secondary { width: 100%; min-height: 45px; margin-top: 14px; padding: 10px 14px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 7px; font-weight: 800; }
+.dispatch-primary { border: 0; background: var(--accent); color: var(--accent-text); }
+.dispatch-primary:disabled { opacity: .45; cursor: not-allowed; }
+.dispatch-secondary { border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.dispatch-status { margin-top: 15px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.dispatch-progress { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; }
+.dispatch-progress strong { color: var(--text); font: 800 17px Manrope; }
+.next-lead { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.next-lead small, .countdown small { display: block; color: var(--muted); font-size: 9px; }
+.next-lead strong { display: block; margin-top: 3px; color: var(--text); font-size: 12px; }
+.countdown { margin-top: 12px; padding: 11px; display: flex; align-items: center; gap: 9px; border-radius: 9px; background: var(--accent-soft); color: var(--accent-strong); }
+.countdown strong { display: block; margin-top: 2px; font: 800 18px Manrope; }
+.session-complete { margin-top: 12px; padding: 12px; display: flex; align-items: center; justify-content: center; gap: 7px; border-radius: 9px; background: var(--accent-soft); color: var(--accent-strong); font-weight: 800; }
+.dispatch-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+.dispatch-actions button { height: 37px; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: 10px; font-weight: 700; }
 .manual-note { display: flex; gap: 9px; margin-top: 15px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; color: var(--accent-strong); background: var(--accent-soft); }
 .manual-note p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
 

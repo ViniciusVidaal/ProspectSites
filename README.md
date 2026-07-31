@@ -19,10 +19,15 @@ consultadas por pesquisa.
 
 ## Contato
 
-O usuário escreve a mensagem no painel e clica em `Abrir WhatsApp` no lead
-desejado. O WhatsApp abre com o texto preenchido, mas o envio permanece manual.
-Ao abrir a conversa, o lead é marcado como enviado no Google Sheets e o contador
-de mensagens do painel é atualizado.
+O usuário escreve a mensagem no painel e pode trabalhar de duas formas:
+
+- `Manual`: abre diretamente o WhatsApp de cada lead;
+- `Sessão assistida`: define a quantidade da sessão, o tamanho dos lotes, o
+  intervalo entre conversas e a pausa entre lotes.
+
+Na sessão assistida, o painel libera uma conversa por vez e controla a contagem
+regressiva. O WhatsApp Web abre com o texto preenchido, mas a confirmação final
+do envio permanece manual. O painel permite pausar, retomar ou encerrar a sessão.
 
 ## Desenvolvimento local
 
