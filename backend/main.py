@@ -18,7 +18,7 @@ try:
         CORSMiddleware,
         allow_origins=_settings.frontend_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
 except RuntimeError:
@@ -81,6 +81,19 @@ def mark_lead_sent(place_id: str):
         ) from exc
 
 
+@app.delete("/api/leads/{place_id}")
+def delete_lead(place_id: str):
+    try:
+        repository().delete(place_id)
+        return {"status": "deleted", "place_id": place_id}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Falha ao excluir no Google Sheets: {exc}"
+        ) from exc
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str):
     if job_id not in jobs:
@@ -97,7 +110,7 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
         report = await search_eligible_profiles(
             settings.places_api_key,
             request.query,
-            minimum_reviews=50,
+            minimum_reviews=request.minimum_reviews,
             max_pages=3,
         )
         job.total = report.scanned
@@ -112,7 +125,8 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
             f"{report.scanned} perfil(is) analisado(s) · "
             f"{len(report.eligible)} qualificado(s) · "
             f"{duplicates} duplicado(s) · "
-            f"{report.pages} página(s) consultada(s)"
+            f"{report.pages} página(s) consultada(s) · "
+            f"mais de {request.minimum_reviews} avaliações"
         )
     except Exception as exc:
         job.status = "failed"

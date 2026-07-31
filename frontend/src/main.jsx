@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Building2, CalendarDays, Check, ExternalLink, LoaderCircle, MapPin,
-  MapPinned, MessageCircle, Radar, Search, Star, Users
+  MapPinned, MessageCircle, Moon, Radar, Search, Star, Sun, Trash2, Users
 } from "lucide-react";
-import { ALL_NICHES, NICHE_CATEGORIES } from "./niches";
+import { NICHE_CATEGORIES } from "./niches";
 import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -34,11 +34,13 @@ function App() {
   const [mode, setMode] = useState("free");
   const [query, setQuery] = useState("");
   const [selectedNiche, setSelectedNiche] = useState("");
-  const [city, setCity] = useState("");
-  const [neighborhood, setNeighborhood] = useState("");
-  const [category, setCategory] = useState("Todos");
-  const [nicheFilter, setNicheFilter] = useState("");
+  const [location, setLocation] = useState("");
+  const [category, setCategory] = useState("");
+  const [minimumReviews, setMinimumReviews] = useState(50);
   const [dateFilter, setDateFilter] = useState("all");
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("prospect-theme") || "light"
+  );
   const [message, setMessage] = useState(
     "Olá! Encontrei sua empresa no Google e gostaria de apresentar uma ideia para melhorar sua presença online. Posso te mostrar?"
   );
@@ -53,6 +55,11 @@ function App() {
   };
 
   useEffect(() => { loadLeads(); }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("prospect-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!job || ["completed", "failed"].includes(job.status)) return;
@@ -77,23 +84,20 @@ function App() {
   const sentCount = leads.filter((lead) => lead.sent).length;
   const busy = job && !["completed", "failed"].includes(job.status);
 
-  const filteredNiches = useMemo(() => ALL_NICHES.filter((item) => {
-    const categoryMatches = category === "Todos" || item.category === category;
-    const textMatches = item.name.toLowerCase().includes(nicheFilter.toLowerCase());
-    return categoryMatches && textMatches;
-  }), [category, nicheFilter]);
-
   const search = async (event) => {
     event.preventDefault();
     const finalQuery = mode === "free"
       ? query.trim()
-      : [selectedNiche, neighborhood, city].filter(Boolean).join(" ").trim();
+      : [selectedNiche, location].filter(Boolean).join(" ").trim();
     if (finalQuery.length < 2) return setNotice("Preencha os dados da pesquisa.");
     setNotice("");
     try {
       setJob(await api("/api/search", {
         method: "POST",
-        body: JSON.stringify({ query: finalQuery }),
+        body: JSON.stringify({
+          query: finalQuery,
+          minimum_reviews: Number(minimumReviews),
+        }),
       }));
     } catch (error) { setNotice(error.message); }
   };
@@ -118,9 +122,21 @@ function App() {
     }
   };
 
+  const deleteLead = async (lead) => {
+    if (!window.confirm(`Excluir ${lead.company_name} permanentemente da sua base?`)) return;
+    const previous = leads;
+    setLeads((items) => items.filter((item) => item.place_id !== lead.place_id));
+    try {
+      await api(`/api/leads/${encodeURIComponent(lead.place_id)}`, { method: "DELETE" });
+    } catch (error) {
+      setLeads(previous);
+      setNotice(`Não foi possível excluir o lead: ${error.message}`);
+    }
+  };
+
   return (
     <main>
-      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a></header>
+      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
 
       <section className="metrics-row">
         <article><span><Users size={18}/></span><div><strong>{leads.length}</strong><small>Leads qualificados</small></div></article>
@@ -128,7 +144,7 @@ function App() {
       </section>
 
       <section className="search-card">
-        <div className="panel-title"><span><Search size={19}/></span><div><h1>Nova pesquisa</h1><p>Encontre empresas sem site próprio e com mais de 50 avaliações.</p></div></div>
+        <div className="panel-title"><span><Search size={19}/></span><div><h1>Nova pesquisa</h1><p>Encontre empresas sem site próprio usando o limite de avaliações que você escolher.</p></div></div>
         <div className="mode-tabs">
           <button className={mode === "free" ? "active" : ""} onClick={() => setMode("free")}>Pesquisa livre</button>
           <button className={mode === "catalog" ? "active" : ""} onClick={() => setMode("catalog")}>Explorar nichos</button>
@@ -138,23 +154,17 @@ function App() {
           {mode === "free" ? (
             <div className="free-search">
               <label><span>Palavra-chave completa</span><div className="input-shell"><Building2 size={17}/><input required value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex: Clínica odontológica Asa Norte Brasília"/></div></label>
+              <label className="reviews-field"><span>Mais de quantas avaliações?</span><div className="input-shell"><Star size={16}/><input type="number" min="0" max="100000" value={minimumReviews} onChange={(event) => setMinimumReviews(event.target.value)} /></div></label>
               <button className="primary" disabled={busy}><Radar size={17}/>{busy ? "Pesquisando..." : "Pesquisar"}</button>
             </div>
           ) : (
             <div className="catalog-search">
-              <div className="catalog-toolbar">
-                <div className="category-scroll">
-                  {["Todos", ...Object.keys(NICHE_CATEGORIES)].map((item) => <button type="button" key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}
-                </div>
-                <div className="niche-filter"><Search size={15}/><input value={nicheFilter} onChange={(event) => setNicheFilter(event.target.value)} placeholder="Filtrar nichos"/></div>
-              </div>
-              <div className="niche-grid">
-                {filteredNiches.map((item) => <button type="button" key={`${item.category}-${item.name}`} className={selectedNiche === item.name ? "selected" : ""} onClick={() => setSelectedNiche(item.name)}>{selectedNiche === item.name && <Check size={13}/>} {item.name}</button>)}
-              </div>
-              <div className="location-grid">
-                <label><span>Cidade</span><div className="input-shell"><MapPin size={17}/><input required value={city} onChange={(event) => setCity(event.target.value)} placeholder="Ex: Brasília"/></div></label>
-                <label><span>Bairro ou região (opcional)</span><div className="input-shell"><MapPinned size={17}/><input value={neighborhood} onChange={(event) => setNeighborhood(event.target.value)} placeholder="Ex: Asa Norte"/></div></label>
-                <button className="primary" disabled={busy || !selectedNiche || !city}><Radar size={17}/>{busy ? "Pesquisando..." : "Pesquisar nicho"}</button>
+              <div className="cascade-grid">
+                <label><span>Segmento</span><select value={category} onChange={(event) => { setCategory(event.target.value); setSelectedNiche(""); }}><option value="">Selecione um segmento</option>{Object.keys(NICHE_CATEGORIES).map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+                <label><span>Nicho</span><select value={selectedNiche} onChange={(event) => setSelectedNiche(event.target.value)} disabled={!category}><option value="">{category ? "Selecione um nicho" : "Escolha o segmento primeiro"}</option>{category && NICHE_CATEGORIES[category].map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+                <label><span>Cidade, bairro ou região</span><div className="input-shell"><MapPin size={17}/><input required value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Ex: Asa Norte Brasília"/></div></label>
+                <label><span>Mais de quantas avaliações?</span><div className="input-shell"><Star size={16}/><input type="number" min="0" max="100000" value={minimumReviews} onChange={(event) => setMinimumReviews(event.target.value)} /></div></label>
+                <button className="primary" disabled={busy || !selectedNiche || !location}><Radar size={17}/>{busy ? "Pesquisando..." : "Pesquisar nicho"}</button>
               </div>
             </div>
           )}
@@ -178,7 +188,7 @@ function App() {
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>
                 <td>{lead.sent ? <span className="sent-badge"><Check size={12}/>Enviado</span> : <span className="pending-badge">Pendente</span>}{lead.sent_at && <small>{lead.sent_at}</small>}</td>
-                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : <span className="no-whatsapp">Sem WhatsApp</span>}</div></td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : <span className="no-whatsapp">Sem WhatsApp</span>}<button className="delete-action" onClick={() => deleteLead(lead)} title="Excluir lead"><Trash2 size={15}/></button></div></td>
               </tr>)}</tbody>
             </table>
             {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}

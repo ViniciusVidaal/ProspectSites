@@ -5,6 +5,7 @@ class SearchRequest(BaseModel):
     query: str | None = Field(default=None, max_length=200)
     niche: str | None = Field(default=None, max_length=100)
     city: str | None = Field(default=None, max_length=100)
+    minimum_reviews: int = Field(default=50, ge=0, le=100000)
 
     @model_validator(mode="after")
     def normalize_query(self):

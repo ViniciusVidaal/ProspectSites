@@ -176,6 +176,55 @@ class SheetsRepository:
         ).execute()
         return lead.model_copy(update={"sent": True, "sent_at": sent_at})
 
+    def delete(self, place_id: str) -> None:
+        self.ensure_sheet()
+        values = self.service.spreadsheets().values().get(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"'{self.sheet_name}'!J2:J",
+        ).execute().get("values", [])
+        row_number = next(
+            (
+                index + 2
+                for index, row in enumerate(values)
+                if row and row[0] == place_id
+            ),
+            None,
+        )
+        if row_number is None:
+            raise KeyError("Lead não encontrado na planilha.")
+
+        metadata = self.service.spreadsheets().get(
+            spreadsheetId=self.spreadsheet_id
+        ).execute()
+        sheet_id = next(
+            (
+                sheet["properties"]["sheetId"]
+                for sheet in metadata.get("sheets", [])
+                if sheet["properties"]["title"] == self.sheet_name
+            ),
+            None,
+        )
+        if sheet_id is None:
+            raise KeyError("Aba de leads não encontrada.")
+
+        self.service.spreadsheets().batchUpdate(
+            spreadsheetId=self.spreadsheet_id,
+            body={
+                "requests": [
+                    {
+                        "deleteDimension": {
+                            "range": {
+                                "sheetId": sheet_id,
+                                "dimension": "ROWS",
+                                "startIndex": row_number - 1,
+                                "endIndex": row_number,
+                            }
+                        }
+                    }
+                ]
+            },
+        ).execute()
+
 
 def today_brazil() -> str:
     return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")
