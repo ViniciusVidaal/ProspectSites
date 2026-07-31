@@ -11,6 +11,14 @@ import "./styles.css";
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const LEADS_CACHE = "prospect-leads-cache";
 const STATS_CACHE = "prospect-stats-cache";
+const MESSAGE_CACHE = "prospect-message-template";
+const DEFAULT_MESSAGE = `Opa, **[Empresa]**. Estava analisando o perfil de vocês no Google e vi que vocês já conquistaram **[AVALIAÇÕES] avaliações** e mantêm uma nota de **[NOTA]⭐** no Google. Mas notei um problema grave: vocês estão perdendo clientes todos os dias por não ter um site oficial.
+
+Muita gente acha a empresa no mapa, procura o site pra confirmar a credibilidade e, como não acha, fecha com a concorrência.
+
+Eu resolvo exatamente isso. Crio sites profissionais focados em vendas por apenas R$ 497 (pagamento único), e ainda libero 1 ano de hospedagem grátis pra vocês.
+
+Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver na prática?`;
 
 function readCache(key, fallback) {
   try {
@@ -56,13 +64,7 @@ function App() {
     () => localStorage.getItem("prospect-theme") || "light"
   );
   const [message, setMessage] = useState(
-    `Opa, **[Empresa]**. Estava analisando o perfil de vocês no Google e vi que vocês já conquistaram **[AVALIAÇÕES] avaliações** e mantêm uma nota de **[NOTA]⭐** no Google. Mas notei um problema grave: vocês estão perdendo clientes todos os dias por não ter um site oficial.
-
-Muita gente acha a empresa no mapa, procura o site pra confirmar a credibilidade e, como não acha, fecha com a concorrência.
-
-Eu resolvo exatamente isso. Crio sites profissionais focados em vendas por apenas R$ 497 (pagamento único), e ainda libero 1 ano de hospedagem grátis pra vocês.
-
-Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver na prática?`
+    () => localStorage.getItem(MESSAGE_CACHE) ?? DEFAULT_MESSAGE
   );
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
@@ -111,6 +113,10 @@ Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver 
   useEffect(() => {
     localStorage.setItem(STATS_CACHE, JSON.stringify(stats));
   }, [stats]);
+
+  useEffect(() => {
+    localStorage.setItem(MESSAGE_CACHE, message);
+  }, [message]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -360,7 +366,7 @@ Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver 
         <aside>
           <div className="panel-title"><span><MessageCircle size={19}/></span><div><h2>Mensagem</h2><p>Texto preenchido no WhatsApp.</p></div></div>
           <div className="send-mode"><button className={sendMode === "manual" ? "active" : ""} onClick={() => setSendMode("manual")}>Manual</button><button className={sendMode === "assisted" ? "active" : ""} onClick={() => setSendMode("assisted")}>Sessão assistida</button></div>
-          <label className="message-label"><span>Mensagem de abordagem</span><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="3000"/><small className="template-tip">Variáveis automáticas: <b>[Empresa]</b>, <b>[AVALIAÇÕES]</b> e <b>[NOTA]</b>.</small></label>
+          <label className="message-label"><span>Mensagem de abordagem</span><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="3000"/><small className="template-tip">Salva automaticamente. Variáveis: <b>[Empresa]</b>, <b>[AVALIAÇÕES]</b> e <b>[NOTA]</b>.</small></label>
           {sendMode === "manual" ? <div className="manual-note"><MessageCircle size={16}/><p>Use o botão “Abrir WhatsApp” de cada lead. A mensagem será preenchida e o envio continuará sob sua confirmação.</p></div> : <div className="dispatch-box">
             <div className="dispatch-grid">
               <label><span>Quantidade nesta sessão</span><input type="number" min="1" max="500" value={sessionAmount} onChange={(event) => setSessionAmount(event.target.value)}/></label>
