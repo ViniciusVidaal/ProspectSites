@@ -1,63 +1,55 @@
 # Prospect Sites
 
-Painel React + agente Python local para identificar anúncios patrocinados, enriquecer
-empresas no Google Places, deduplicar leads no Google Sheets e abrir uma fila
-confirmada de mensagens no WhatsApp Web.
+Painel React + API FastAPI para encontrar perfis comerciais no Google com potencial
+para criação de site.
 
-## Configuração
+## Regra de qualificação
 
-1. Compartilhe a planilha com o e-mail da conta de serviço como **Editor**.
-2. Copie `.env.example` para `.env` e preencha as três variáveis obrigatórias.
-3. Instale e inicie o backend:
+Uma empresa é salva quando:
+
+- possui mais de 50 avaliações no Google;
+- tem telefone cadastrado, quando disponível;
+- o campo de site aponta para Instagram, Facebook, LinkedIn, Linktree, WhatsApp,
+  TikTok, YouTube, Google Sites, Canva Site, Wix gratuito ou plataforma semelhante.
+
+A busca usa diretamente a Google Places API (New), sem scraping de anúncios,
+navegador automatizado, CAPTCHA ou SerpApi. Até três páginas de 20 perfis são
+consultadas por pesquisa.
+
+## Contato
+
+O usuário escreve a mensagem no painel e clica em `Abrir WhatsApp` no lead
+desejado. O WhatsApp abre com o texto preenchido, mas o envio permanece manual.
+
+## Desenvolvimento local
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-playwright install chromium
 uvicorn backend.main:app --reload
 ```
 
-4. Em outro terminal, inicie o painel:
+Em outro terminal:
 
 ```powershell
 cd frontend
-npm install
-npm run dev
+corepack pnpm install
+corepack pnpm dev
 ```
 
-Abra `http://localhost:5173`. No primeiro disparo, faça login no WhatsApp Web.
-A sessão fica apenas na pasta local `whatsapp-profile`, ignorada pelo Git.
-
-## Agente de pesquisa local
-
-Em produção, configure no Render:
+## Variáveis do backend
 
 ```text
-SEARCH_MODE=agent
-AGENT_TOKEN=um_token_longo_e_privado
+GOOGLE_PLACES_API_KEY
+GOOGLE_SPREADSHEET_ID
+GOOGLE_SERVICE_ACCOUNT_JSON
+GOOGLE_SHEET_NAME=Leads
+FRONTEND_ORIGINS=https://seu-projeto.vercel.app
 ```
 
-No computador que executará as pesquisas, copie `agent/.env.example` para
-`agent/.env`, informe a URL do Render e use exatamente o mesmo `AGENT_TOKEN`.
-Instale as dependências e inicie:
+O frontend usa:
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-pip install -r agent\requirements.txt
-playwright install chromium
-python agent\main.py
+```text
+VITE_API_URL=https://seu-backend.onrender.com
 ```
-
-O agente mantém contato com o Render, abre o Chrome local quando recebe uma
-pesquisa e devolve somente os resultados marcados como patrocinados.
-
-## Produção
-
-O frontend pode ser publicado na Vercel com `VITE_API_URL` apontando para uma URL
-HTTPS do agente. O agente precisa rodar em uma máquina com navegador e acesso ao
-arquivo da conta de serviço; ele não deve ser implantado na Vercel.
-
-O HTML do Google e do WhatsApp muda com frequência. Se a coleta ou o clique de
-envio deixar de funcionar, atualize os seletores em `backend/scraper.py` e
-`backend/whatsapp.py`.

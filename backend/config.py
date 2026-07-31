@@ -10,16 +10,11 @@ load_dotenv()
 
 class Settings(BaseModel):
     places_api_key: str
-    serpapi_api_key: str = ""
     spreadsheet_id: str
     service_account_file: Path | None = None
     service_account_info: dict | None = None
     sheet_name: str
     frontend_origins: list[str]
-    headless: bool
-    whatsapp_profile_dir: Path
-    search_mode: str
-    agent_token: str
 
 
 @lru_cache
@@ -57,20 +52,15 @@ def get_settings() -> Settings:
 
     return Settings(
         places_api_key=required["GOOGLE_PLACES_API_KEY"],
-        serpapi_api_key=os.getenv("SERPAPI_API_KEY", ""),
         spreadsheet_id=required["GOOGLE_SPREADSHEET_ID"],
         service_account_file=service_file,
         service_account_info=service_info,
         sheet_name=os.getenv("GOOGLE_SHEET_NAME", "Leads"),
         frontend_origins=[
             item.strip()
-            for item in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173").split(",")
+            for item in os.getenv(
+                "FRONTEND_ORIGINS", "http://localhost:5173"
+            ).split(",")
             if item.strip()
         ],
-        headless=os.getenv("HEADLESS", "false").lower() == "true",
-        whatsapp_profile_dir=Path(
-            os.getenv("WHATSAPP_PROFILE_DIR", "./whatsapp-profile")
-        ).resolve(),
-        search_mode=os.getenv("SEARCH_MODE", "cloud").strip().lower(),
-        agent_token=os.getenv("AGENT_TOKEN", ""),
     )

@@ -15,6 +15,10 @@ HEADERS = [
     "Telefone",
     "Link WhatsApp",
     "Site Atual",
+    "Plataforma",
+    "Avaliações",
+    "Nota",
+    "Google Maps",
     "Place ID",
 ]
 
@@ -53,11 +57,11 @@ class SheetsRepository:
                 },
             ).execute()
 
-        header_range = f"'{self.sheet_name}'!A1:F1"
+        header_range = f"'{self.sheet_name}'!A1:J1"
         current = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id, range=header_range
         ).execute().get("values", [])
-        if not current:
+        if not current or current[0] != HEADERS:
             self.service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
                 range=header_range,
@@ -69,12 +73,24 @@ class SheetsRepository:
         self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A2:F",
+            range=f"'{self.sheet_name}'!A2:J",
         ).execute().get("values", [])
         leads = []
         for row in rows:
-            padded = row + [""] * (6 - len(row))
-            if padded[5]:
+            if len(row) <= 6 and len(row) > 5 and row[5]:
+                leads.append(
+                    Lead(
+                        date=row[0] if len(row) > 0 else "",
+                        company_name=row[1] if len(row) > 1 else "",
+                        phone=row[2] if len(row) > 2 else "",
+                        whatsapp_link=row[3] if len(row) > 3 else "",
+                        current_site=row[4] if len(row) > 4 else "",
+                        place_id=row[5],
+                    )
+                )
+                continue
+            padded = row + [""] * (10 - len(row))
+            if padded[9]:
                 leads.append(
                     Lead(
                         date=padded[0],
@@ -82,7 +98,11 @@ class SheetsRepository:
                         phone=padded[2],
                         whatsapp_link=padded[3],
                         current_site=padded[4],
-                        place_id=padded[5],
+                        site_platform=padded[5],
+                        review_count=int(padded[6] or 0),
+                        rating=float(str(padded[7] or 0).replace(",", ".")),
+                        maps_link=padded[8],
+                        place_id=padded[9],
                     )
                 )
         return leads
@@ -99,13 +119,17 @@ class SheetsRepository:
                 lead.phone,
                 lead.whatsapp_link,
                 lead.current_site,
+                lead.site_platform,
+                lead.review_count,
+                lead.rating,
+                lead.maps_link,
                 lead.place_id,
             ]
             for lead in fresh
         ]
         self.service.spreadsheets().values().append(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A:F",
+            range=f"'{self.sheet_name}'!A:J",
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": values},

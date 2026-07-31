@@ -4,7 +4,4 @@ __pycache__/
 *.pyc
 frontend/node_modules/
 frontend/dist/
-.playwright/
-whatsapp-profile/
 google-service-account.json
-

@@ -8,8 +8,6 @@ services:
     envVars:
       - key: GOOGLE_PLACES_API_KEY
         sync: false
-      - key: SERPAPI_API_KEY
-        sync: false
       - key: GOOGLE_SPREADSHEET_ID
         sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
@@ -18,11 +16,3 @@ services:
         value: Leads
       - key: FRONTEND_ORIGINS
         sync: false
-      - key: HEADLESS
-        value: "true"
-      - key: WHATSAPP_PROFILE_DIR
-        value: /tmp/whatsapp-profile
-      - key: SEARCH_MODE
-        value: agent
-      - key: AGENT_TOKEN
-        generateValue: true
