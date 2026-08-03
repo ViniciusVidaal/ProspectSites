@@ -191,12 +191,6 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    if (!dispatch || dispatch.status !== "waiting") return;
-    const timer = setInterval(() => setClock(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [dispatch?.status, dispatch?.nextAt]);
-
-  useEffect(() => {
     if (!job || ["completed", "failed"].includes(job.status)) return;
     const timer = setInterval(async () => {
       try {
@@ -404,10 +398,15 @@ function App() {
   const countdownLabel = `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
 
   useEffect(() => {
-    if (dispatch?.status === "waiting" && remainingSeconds === 0) {
-      advanceDispatch(dispatch);
-    }
-  }, [dispatch?.status, dispatch?.nextAt, clock]);
+    if (!dispatch || dispatch.status !== "waiting") return;
+    const tick = setInterval(() => setClock(Date.now()), 1000);
+    const delay = Math.max(0, dispatch.nextAt - Date.now());
+    const nextLead = setTimeout(() => advanceDispatch(dispatch), delay);
+    return () => {
+      clearInterval(tick);
+      clearTimeout(nextLead);
+    };
+  }, [dispatch?.status, dispatch?.nextAt, dispatch?.index]);
 
   if (authStatus === "checking") {
     return <main className="auth-loading"><LoaderCircle className="spin" size={28}/><span>Verificando acesso...</span></main>;
