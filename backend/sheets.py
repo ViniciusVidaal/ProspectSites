@@ -24,6 +24,9 @@ HEADERS = [
     "Data do Envio",
     "Arquivado",
     "CNPJ",
+    "Endereço",
+    "Cidade",
+    "UF",
 ]
 
 
@@ -61,7 +64,7 @@ class SheetsRepository:
                 },
             ).execute()
 
-        header_range = f"'{self.sheet_name}'!A1:N1"
+        header_range = f"'{self.sheet_name}'!A1:Q1"
         current = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id, range=header_range
         ).execute().get("values", [])
@@ -77,7 +80,7 @@ class SheetsRepository:
         self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A2:N",
+            range=f"'{self.sheet_name}'!A2:Q",
         ).execute().get("values", [])
         leads = []
         for row in rows:
@@ -103,7 +106,7 @@ class SheetsRepository:
                         )
                     )
                 continue
-            padded = row + [""] * (14 - len(row))
+            padded = row + [""] * (17 - len(row))
             if padded[9]:
                 lead = Lead(
                         date=padded[0],
@@ -124,6 +127,9 @@ class SheetsRepository:
                             "sim", "true", "1", "arquivado"
                         },
                         cnpj=padded[13],
+                        address=padded[14],
+                        city=padded[15],
+                        state=padded[16],
                     )
                 contactable = bool(
                     lead.phone or (
@@ -163,12 +169,15 @@ class SheetsRepository:
                 lead.sent_at,
                 "Sim" if lead.archived else "NÃ£o",
                 lead.cnpj,
+                lead.address,
+                lead.city,
+                lead.state,
             ]
             for lead in fresh
         ]
         self.service.spreadsheets().values().append(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A:N",
+            range=f"'{self.sheet_name}'!A:Q",
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": values},
@@ -179,7 +188,7 @@ class SheetsRepository:
         self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A2:N",
+            range=f"'{self.sheet_name}'!A2:Q",
         ).execute().get("values", [])
         row_number = next(
             (
@@ -284,8 +293,8 @@ class SheetsRepository:
         ).execute()
         return len(row_numbers)
 
-    def update_cnpjs(self, cnpjs_by_place_id: dict[str, str]) -> int:
-        updates = {place_id: cnpj for place_id, cnpj in cnpjs_by_place_id.items() if cnpj}
+    def update_enrichment(self, leads: list[Lead]) -> int:
+        updates = {lead.place_id: lead for lead in leads}
         if not updates:
             return 0
         self.ensure_sheet()
@@ -294,7 +303,15 @@ class SheetsRepository:
             range=f"'{self.sheet_name}'!A2:J",
         ).execute().get("values", [])
         data = [
-            {"range": f"'{self.sheet_name}'!N{index + 2}", "values": [[updates[row[9]]]]}
+            {
+                "range": f"'{self.sheet_name}'!N{index + 2}:Q{index + 2}",
+                "values": [[
+                    updates[row[9]].cnpj,
+                    updates[row[9]].address,
+                    updates[row[9]].city,
+                    updates[row[9]].state,
+                ]],
+            }
             for index, row in enumerate(rows)
             if len(row) > 9 and row[9] in updates
         ]

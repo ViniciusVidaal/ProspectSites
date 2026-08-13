@@ -63,8 +63,6 @@ def find_matching_cnpj_texts(texts: list[str], lead: Lead) -> str:
     city = normalize_text(lead.city)
     state = normalize_text(lead.state)
     address_tokens = {token for token in normalize_text(lead.address).split() if len(token) >= 4}
-    phone_digits = re.sub(r"\D", "", lead.phone)
-    phone_tail = phone_digits[-8:] if len(phone_digits) >= 8 else ""
     best: tuple[float, str] | None = None
 
     for text in texts:
@@ -77,10 +75,9 @@ def find_matching_cnpj_texts(texts: list[str], lead: Lead) -> str:
             city_match = bool(city and city in normalized)
             state_match = bool(state and re.search(rf"\b{re.escape(state)}\b", normalized))
             address_match = len(address_tokens & text_tokens) >= 2
-            phone_match = bool(phone_tail and phone_tail in re.sub(r"\D", "", context))
-            if not name_match or not (city_match or address_match or phone_match):
+            if not name_match or not (city_match or address_match):
                 continue
-            score = overlap * 4 + city_match * 4 + state_match * 2 + address_match * 2 + phone_match * 3
+            score = overlap * 4 + city_match * 4 + state_match * 2 + address_match * 2
             candidate = normalize_cnpj(occurrence.group(1))
             if valid_cnpj(candidate) and (best is None or score > best[0]):
                 best = (score, candidate)
@@ -89,13 +86,10 @@ def find_matching_cnpj_texts(texts: list[str], lead: Lead) -> str:
 
 async def lookup_cnpj_serpapi(client: httpx.AsyncClient, lead: Lead, api_key: str) -> str:
     location = " ".join(part for part in (lead.city, lead.state) if part).strip()
-    phone_digits = re.sub(r"\D", "", lead.phone)
-    national_phone = phone_digits[2:] if phone_digits.startswith("55") and len(phone_digits) > 11 else phone_digits
-    subscriber = national_phone[2:] if len(national_phone) in {10, 11} else national_phone[-9:]
-    phone = f"{subscriber[:-4]}-{subscriber[-4:]}" if len(subscriber) >= 8 else subscriber
-    query = f'"{lead.company_name}" {location} CNPJ'
-    if phone:
-        query = f'"{phone}" CNPJ'
+    searchable_name = re.sub(r"\([^)]*\)", " ", lead.company_name)
+    searchable_name = re.sub(r"\s*[-|]\s*(matriz|filial|unidade|loja)\b.*$", " ", searchable_name, flags=re.I)
+    searchable_name = re.sub(r"\s+", " ", searchable_name).strip()
+    query = f'{searchable_name} {location} CNPJ'
     response = await client.get(
         "https://serpapi.com/search.json",
         params={

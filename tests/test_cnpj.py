@@ -35,10 +35,9 @@ class CnpjDiscoveryTests(unittest.TestCase):
         snippets = ["Padaria X - CNPJ 11.222.333/0001-81, localizada em Brasília, DF"]
         self.assertEqual(find_matching_cnpj_texts(snippets, self.lead), "11222333000181")
 
-    def test_accepts_matching_phone_when_location_is_absent(self):
-        lead = self.lead.model_copy(update={"city": "", "state": "", "address": ""})
-        snippets = ["Padaria X telefone (61) 3333-4444 CNPJ 11.222.333/0001-81"]
-        self.assertEqual(find_matching_cnpj_texts(snippets, lead), "11222333000181")
+    def test_accepts_legal_suffix_variant_in_same_location(self):
+        snippets = ["Padaria X LTDA, CNPJ 11.222.333/0001-81, Brasília - DF"]
+        self.assertEqual(find_matching_cnpj_texts(snippets, self.lead), "11222333000181")
 
     def test_public_payload_hides_cnpj_and_location(self):
         lead = self.lead.model_copy(update={"cnpj": "11222333000181", "cnpj_captured": True})

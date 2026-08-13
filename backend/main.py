@@ -183,11 +183,12 @@ async def run_cnpj_backfill(job_id: str) -> None:
             for start in range(0, len(pending), 5):
                 batch = pending[start:start + 5]
                 job.detail = f"Localizando empresas {start + 1}-{min(start + len(batch), job.total)} de {job.total}"
-                location_semaphore = asyncio.Semaphore(5)
+                location_semaphore = asyncio.Semaphore(1)
 
                 async def locate(lead):
                     try:
                         async with location_semaphore:
+                            await asyncio.sleep(1.1)
                             return await hydrate_lead_location(places_client, settings.places_api_key, lead)
                     except httpx.HTTPError:
                         return lead
@@ -202,8 +203,7 @@ async def run_cnpj_backfill(job_id: str) -> None:
                     serpapi_api_key=settings.serpapi_api_key,
                 )
                 captured += found
-                updates = {lead.place_id: lead.cnpj for lead in located if lead.cnpj}
-                await asyncio.to_thread(repository().update_cnpjs, updates)
+                await asyncio.to_thread(repository().update_enrichment, located)
                 job.processed = min(start + len(batch), job.total)
                 job.detail = f"{job.processed}/{job.total} analisado(s) · {captured} CNPJ(s) capturado(s)"
         job.status = "completed"
