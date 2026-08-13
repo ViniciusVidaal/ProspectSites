@@ -1,6 +1,6 @@
 import unittest
 
-from backend.econodata import extract_first_cnpj, normalize_cnpj, valid_cnpj
+from backend.econodata import extract_matched_cnpj, normalize_cnpj, valid_cnpj
 
 
 class EconodataTests(unittest.TestCase):
@@ -10,12 +10,12 @@ class EconodataTests(unittest.TestCase):
         self.assertFalse(valid_cnpj("11.222.333/0001-82"))
 
     def test_extracts_cnpj_from_nested_response(self):
-        payload = {"resultados": [{"empresa": {"cnpj": "11.222.333/0001-81"}}]}
-        self.assertEqual(extract_first_cnpj(payload), "11222333000181")
+        payload = {"correspondencias": [{"cnpj": "11.222.333/0001-81", "confianca": 0.92}]}
+        self.assertEqual(extract_matched_cnpj(payload), "11222333000181")
 
     def test_ignores_other_numbers(self):
-        payload = {"telefone": "556133334444", "total": 25}
-        self.assertEqual(extract_first_cnpj(payload), "")
+        payload = {"correspondencias": [], "telefone": "556133334444"}
+        self.assertEqual(extract_matched_cnpj(payload), "")
 
 
 if __name__ == "__main__":

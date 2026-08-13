@@ -168,13 +168,7 @@ async def run_cnpj_backfill(job_id: str) -> None:
         job.status = "running"
         job.detail = "Carregando leads ativos e arquivados"
         settings = get_settings()
-        econodata = EconodataClient(
-            settings.econodata_api_url,
-            settings.econodata_api_key,
-            settings.econodata_auth_header,
-            settings.econodata_auth_scheme,
-            settings.econodata_query_param,
-        )
+        econodata = EconodataClient(settings.econodata_api_key)
         leads = await asyncio.to_thread(repository().list, True)
         pending = [
             lead for lead in leads
@@ -202,10 +196,10 @@ async def run_cnpj_backfill(job_id: str) -> None:
 @app.post("/api/cnpj/backfill", status_code=202)
 async def start_cnpj_backfill(background_tasks: BackgroundTasks):
     settings = get_settings()
-    if not settings.econodata_api_url or not settings.econodata_api_key:
+    if not settings.econodata_api_key:
         raise HTTPException(
             status_code=503,
-            detail="Configure ECONODATA_API_URL e ECONODATA_API_KEY no Render.",
+            detail="Configure ECONODATA_API_KEY no Render.",
         )
     if any(job.kind == "cnpj_backfill" and job.status in {"queued", "running"} for job in jobs.values()):
         raise HTTPException(status_code=409, detail="A busca de CNPJs já está em andamento.")

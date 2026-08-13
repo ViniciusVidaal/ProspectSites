@@ -1,5 +1,4 @@
 import re
-from typing import Any
 
 import httpx
 
@@ -24,44 +23,37 @@ def valid_cnpj(value: str) -> bool:
     return digits[-2:] == first + second
 
 
-def extract_first_cnpj(payload: Any) -> str:
-    if isinstance(payload, dict):
-        prioritized = [value for key, value in payload.items() if "cnpj" in str(key).lower()]
-        remaining = [value for key, value in payload.items() if "cnpj" not in str(key).lower()]
-        for value in prioritized + remaining:
-            candidate = extract_first_cnpj(value)
-            if candidate:
-                return candidate
-    elif isinstance(payload, list):
-        for value in payload:
-            candidate = extract_first_cnpj(value)
-            if candidate:
-                return candidate
-    elif isinstance(payload, (str, int)):
-        candidate = normalize_cnpj(str(payload))
-        if valid_cnpj(candidate):
-            return candidate
+def extract_matched_cnpj(payload: dict) -> str:
+    matches = payload.get("correspondencias", [])
+    if not isinstance(matches, list) or not matches:
+        return ""
+    first = matches[0]
+    if not isinstance(first, dict):
+        return ""
+    candidate = normalize_cnpj(first.get("cnpj", ""))
+    if valid_cnpj(candidate):
+        return candidate
     return ""
 
 
 class EconodataClient:
-    def __init__(self, api_url: str, api_key: str, auth_header: str = "Authorization", auth_scheme: str = "Bearer", query_param: str = "nome"):
-        self.api_url = api_url
+    def __init__(self, api_key: str):
         self.api_key = api_key
-        self.auth_header = auth_header
-        self.auth_scheme = auth_scheme
-        self.query_param = query_param
 
     async def find_cnpj(self, client: httpx.AsyncClient, lead: Lead) -> str:
-        credential = f"{self.auth_scheme} {self.api_key}".strip()
-        response = await client.get(
-            self.api_url,
-            params={self.query_param: lead.company_name},
-            headers={self.auth_header: credential},
+        criteria = {"nome": lead.company_name}
+        if len(lead.state.strip()) == 2:
+            criteria["uf"] = lead.state.strip().upper()
+        response = await client.post(
+            "https://api.econodata.com.br/v4/companies/match",
+            json={"criterios": criteria},
+            headers={"Authorization": f"Bearer {self.api_key}"},
         )
         if response.status_code == 429:
             raise RuntimeError("A Econodata atingiu o limite de consultas da conta.")
         if response.status_code in {401, 403}:
             raise RuntimeError("A Econodata recusou a chave de acesso.")
+        if response.status_code == 402:
+            raise RuntimeError("A conta Econodata não possui tokens suficientes.")
         response.raise_for_status()
-        return extract_first_cnpj(response.json())
+        return extract_matched_cnpj(response.json())

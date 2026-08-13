@@ -70,12 +70,5 @@ backend do Render e nunca é enviada ao navegador.
 Configure no Render:
 
 ```text
-ECONODATA_API_URL=https://endpoint-fornecido-pela-econodata
 ECONODATA_API_KEY=sua-chave
-ECONODATA_AUTH_HEADER=Authorization
-ECONODATA_AUTH_SCHEME=Bearer
-ECONODATA_QUERY_PARAM=nome
 ```
-
-Os três últimos valores devem ser ajustados caso o exemplo de requisição
-fornecido pela Econodata utilize outro cabeçalho, esquema ou nome de parâmetro.
