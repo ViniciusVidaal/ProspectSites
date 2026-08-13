@@ -1,9 +1,11 @@
 import asyncio
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from .config import get_settings
 from .cnpj import enrich_leads_with_cnpj
@@ -60,6 +62,15 @@ def health():
         }
     except RuntimeError as exc:
         return {"status": "configuration_required", "detail": str(exc)}
+
+
+@app.get("/colab/receita_cnpj.py", include_in_schema=False)
+def colab_helper():
+    return FileResponse(
+        Path("colab/receita_cnpj.py"),
+        media_type="text/x-python",
+        filename="receita_cnpj.py",
+    )
 
 
 @app.get("/api/leads")
