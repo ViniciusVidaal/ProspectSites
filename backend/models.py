@@ -1,11 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 
 
-class LoginRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=254)
-    password: str = Field(min_length=8, max_length=200)
-
-
 class SearchRequest(BaseModel):
     query: str | None = Field(default=None, max_length=200)
     niche: str | None = Field(default=None, max_length=100)

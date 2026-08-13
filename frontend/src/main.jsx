@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
-  Clock, KeyRound, Lock, LogOut, Mail, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
+  Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
   Search, Star, Sun, Trash2, Users
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
@@ -12,7 +12,6 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const LEADS_CACHE = "prospect-leads-cache";
 const STATS_CACHE = "prospect-stats-cache";
 const MESSAGE_CACHE = "prospect-message-template";
-const AUTH_TOKEN = "prospect-auth-token";
 const DEFAULT_MESSAGE = `Opa, **[Empresa]**. Estava analisando o perfil de vocês no Google e vi que vocês já conquistaram **[AVALIAÇÕES] avaliações** e mantêm uma nota de **[NOTA]⭐** no Google. Mas notei um problema grave: vocês estão perdendo clientes todos os dias por não ter um site oficial.
 
 Muita gente acha a empresa no mapa, procura o site pra confirmar a credibilidade e, como não acha, fecha com a concorrência.
@@ -39,12 +38,10 @@ function readableError(detail) {
 }
 
 async function api(path, options) {
-  const token = localStorage.getItem(AUTH_TOKEN);
   const response = await fetch(`${API}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers || {}),
     },
   });
@@ -57,45 +54,7 @@ async function api(path, options) {
   return body;
 }
 
-function LoginScreen({ onLogin }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const submit = async (event) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setError("");
-    try {
-      const session = await api("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      });
-      localStorage.setItem(AUTH_TOKEN, session.access_token);
-      onLogin(email);
-    } catch (loginError) {
-      setError(loginError.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return <main className="login-page"><section className="login-card">
-    <div className="login-brand"><span><Radar size={23}/></span><div><strong>Prospect Sites</strong><small>Acesso administrativo</small></div></div>
-    <div className="login-copy"><span><Lock size={18}/></span><h1>Entre no seu painel</h1><p>Use suas credenciais para acessar os leads e pesquisas.</p></div>
-    <form onSubmit={submit} className="login-form">
-      <label><span>E-mail</span><div className="input-shell"><Mail size={17}/><input type="email" required autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="seu@email.com"/></div></label>
-      <label><span>Senha</span><div className="input-shell"><KeyRound size={17}/><input type="password" required minLength="8" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Sua senha"/></div></label>
-      {error && <div className="login-error">{error}</div>}
-      <button className="primary" disabled={submitting}>{submitting ? <LoaderCircle className="spin" size={17}/> : <Lock size={17}/>} {submitting ? "Entrando..." : "Entrar"}</button>
-    </form>
-  </section></main>;
-}
-
 function App() {
-  const [authStatus, setAuthStatus] = useState("checking");
-  const [authEmail, setAuthEmail] = useState("");
   const [leads, setLeads] = useState(() => readCache(LEADS_CACHE, []));
   const [mode, setMode] = useState("free");
   const [query, setQuery] = useState("");
@@ -122,6 +81,7 @@ function App() {
   const [batchPause, setBatchPause] = useState(10);
   const [dispatch, setDispatch] = useState(null);
   const [clock, setClock] = useState(Date.now());
+  const [leadActions, setLeadActions] = useState({});
   const dispatchWindowRef = useRef(null);
 
   const loadLeads = async ({ silent = false, retries = 5 } = {}) => {
@@ -150,28 +110,7 @@ function App() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    const token = localStorage.getItem(AUTH_TOKEN);
-    if (!token) {
-      setAuthStatus("guest");
-      return;
-    }
-    api("/api/auth/me")
-      .then((account) => {
-        setAuthEmail(account.email);
-        setAuthStatus("authenticated");
-      })
-      .catch(() => {
-        localStorage.removeItem(AUTH_TOKEN);
-        setAuthStatus("guest");
-      });
-  }, []);
-
-  useEffect(() => {
-    if (authStatus === "authenticated") {
-      loadLeads({ silent: leads.length > 0 });
-    }
-  }, [authStatus]);
+  useEffect(() => { loadLeads({ silent: leads.length > 0 }); }, []);
 
   useEffect(() => {
     localStorage.setItem(LEADS_CACHE, JSON.stringify(leads));
@@ -256,39 +195,58 @@ function App() {
   };
 
   const markSent = async (placeId) => {
-    const previous = leads;
-    const previousStats = stats;
-    const wasSent = leads.some((lead) => lead.place_id === placeId && lead.sent);
+    const original = leads.find((lead) => lead.place_id === placeId);
+    if (!original || original.sent || leadActions[placeId]) return;
+    setLeadActions((current) => ({ ...current, [placeId]: "sending" }));
     setLeads((items) => items.map((lead) =>
       lead.place_id === placeId ? { ...lead, sent: true } : lead
     ));
-    if (!wasSent) {
-      setStats((current) => ({
-        ...current,
-        sent: Number(current.sent || 0) + 1,
-        sent_today: Number(current.sent_today || 0) + 1,
-      }));
-    }
+    setStats((current) => ({
+      ...current,
+      sent: Number(current.sent || 0) + 1,
+      sent_today: Number(current.sent_today || 0) + 1,
+    }));
     try {
       const updated = await api(`/api/leads/${encodeURIComponent(placeId)}/sent`, { method: "POST" });
       setLeads((items) => items.map((lead) => lead.place_id === placeId ? updated : lead));
     } catch (error) {
-      setLeads(previous);
-      setStats(previousStats);
+      setLeads((items) => items.map((lead) =>
+        lead.place_id === placeId ? original : lead
+      ));
+      setStats((current) => ({
+        ...current,
+        sent: Math.max(0, Number(current.sent || 0) - 1),
+        sent_today: Math.max(0, Number(current.sent_today || 0) - 1),
+      }));
       setNotice(`O WhatsApp foi aberto, mas não foi possível marcar como enviado: ${error.message}`);
+    } finally {
+      setLeadActions((current) => {
+        const next = { ...current };
+        delete next[placeId];
+        return next;
+      });
     }
   };
 
   const deleteLead = async (lead) => {
     if (!window.confirm(`Arquivar ${lead.company_name}? Ele sairá do painel, mas continuará salvo no histórico.`)) return;
-    const previous = leads;
-    setLeads((items) => items.filter((item) => item.place_id !== lead.place_id));
+    if (leadActions[lead.place_id]) return;
+    setLeadActions((current) => ({ ...current, [lead.place_id]: "archiving" }));
     try {
       await api(`/api/leads/${encodeURIComponent(lead.place_id)}`, { method: "DELETE" });
-      await loadLeads();
+      setLeads((items) => items.filter((item) => item.place_id !== lead.place_id));
+      setStats((current) => ({
+        ...current,
+        archived: Number(current.archived || 0) + 1,
+      }));
     } catch (error) {
-      setLeads(previous);
       setNotice(`Não foi possível arquivar o lead: ${error.message}`);
+    } finally {
+      setLeadActions((current) => {
+        const next = { ...current };
+        delete next[lead.place_id];
+        return next;
+      });
     }
   };
 
@@ -328,16 +286,6 @@ function App() {
       setLeads(previous);
       setNotice(`Não foi possível arquivar os leads enviados: ${error.message}`);
     }
-  };
-
-  const logout = () => {
-    localStorage.removeItem(AUTH_TOKEN);
-    localStorage.removeItem(LEADS_CACHE);
-    localStorage.removeItem(STATS_CACHE);
-    setLeads([]);
-    setStats({ archived: 0 });
-    setAuthEmail("");
-    setAuthStatus("guest");
   };
 
   const startDispatch = () => {
@@ -408,17 +356,9 @@ function App() {
     };
   }, [dispatch?.status, dispatch?.nextAt, dispatch?.index]);
 
-  if (authStatus === "checking") {
-    return <main className="auth-loading"><LoaderCircle className="spin" size={28}/><span>Verificando acesso...</span></main>;
-  }
-
-  if (authStatus !== "authenticated") {
-    return <LoginScreen onLogin={(email) => { setAuthEmail(email); setAuthStatus("authenticated"); }}/>
-  }
-
   return (
     <main>
-      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><div className="header-actions"><small>{authEmail}</small><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button><button className="logout-button" onClick={logout} title="Sair"><LogOut size={17}/><span>Sair</span></button></div></header>
+      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
 
       <section className="metrics-row">
         <article><span><Users size={18}/></span><div><strong>{leads.length}</strong><small>Leads qualificados</small></div></article>
@@ -473,7 +413,7 @@ function App() {
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>
                 <td>{lead.sent ? <span className="sent-badge"><Check size={12}/>Enviado</span> : <span className="pending-badge">Pendente</span>}{lead.sent_at && <small>{lead.sent_at}</small>}</td>
-                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}<button className="delete-action" onClick={() => deleteLead(lead)} title="Arquivar lead"><Trash2 size={15}/></button></div></td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}<button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Arquivar lead">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button></div></td>
               </tr>)}</tbody>
             </table>
             {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}

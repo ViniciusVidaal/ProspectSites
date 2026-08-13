@@ -130,8 +130,13 @@ class SheetsRepository:
                 )
                 if include_archived or (not lead.archived and contactable):
                     leads.append(lead)
+        unique: dict[str, Lead] = {}
+        for lead in leads:
+            current = unique.get(lead.place_id)
+            if current is None or (current.archived and not lead.archived):
+                unique[lead.place_id] = lead
         return sorted(
-            leads,
+            unique.values(),
             key=lambda lead: (-lead.review_count, -lead.rating, lead.company_name.casefold()),
         )
 
@@ -168,25 +173,35 @@ class SheetsRepository:
         return fresh
 
     def mark_sent(self, place_id: str) -> Lead:
-        leads = self.list()
-        lead = next((item for item in leads if item.place_id == place_id), None)
-        if not lead:
-            raise KeyError("Lead não encontrado.")
-
-        values = self.service.spreadsheets().values().get(
+        self.ensure_sheet()
+        rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!J2:J",
+            range=f"'{self.sheet_name}'!A2:M",
         ).execute().get("values", [])
         row_number = next(
             (
                 index + 2
-                for index, row in enumerate(values)
-                if row and row[0] == place_id
+                for index, row in enumerate(rows)
+                if (
+                    (len(row) > 9 and row[9] == place_id)
+                    or (
+                        len(row) > 5
+                        and (len(row) <= 9 or not row[9])
+                        and row[5] == place_id
+                    )
+                )
             ),
             None,
         )
         if row_number is None:
             raise KeyError("Lead não encontrado na planilha.")
+
+        lead = next(
+            (item for item in self.list() if item.place_id == place_id),
+            None,
+        )
+        if not lead:
+            raise KeyError("Lead não encontrado.")
 
         sent_at = datetime.now(
             ZoneInfo("America/Sao_Paulo")
@@ -211,7 +226,11 @@ class SheetsRepository:
                 for index, row in enumerate(rows)
                 if (
                     (len(row) > 9 and row[9] == place_id)
-                    or (len(row) <= 6 and len(row) > 5 and row[5] == place_id)
+                    or (
+                        len(row) > 5
+                        and (len(row) <= 9 or not row[9])
+                        and row[5] == place_id
+                    )
                 )
             ),
             None,
@@ -238,7 +257,11 @@ class SheetsRepository:
             for index, row in enumerate(rows)
             if (
                 (len(row) > 9 and row[9] in requested)
-                or (len(row) <= 6 and len(row) > 5 and row[5] in requested)
+                or (
+                    len(row) > 5
+                    and (len(row) <= 9 or not row[9])
+                    and row[5] in requested
+                )
             )
         ]
         if not row_numbers:

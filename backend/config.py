@@ -15,9 +15,6 @@ class Settings(BaseModel):
     service_account_info: dict | None = None
     sheet_name: str
     frontend_origins: list[str]
-    admin_email: str
-    admin_password_hash: str
-    jwt_secret: str
 
 
 @lru_cache
@@ -27,9 +24,6 @@ def get_settings() -> Settings:
     required = {
         "GOOGLE_PLACES_API_KEY": os.getenv("GOOGLE_PLACES_API_KEY"),
         "GOOGLE_SPREADSHEET_ID": os.getenv("GOOGLE_SPREADSHEET_ID"),
-        "ADMIN_EMAIL": os.getenv("ADMIN_EMAIL"),
-        "ADMIN_PASSWORD_HASH": os.getenv("ADMIN_PASSWORD_HASH"),
-        "JWT_SECRET": os.getenv("JWT_SECRET"),
     }
     missing = [name for name, value in required.items() if not value]
     if missing:
@@ -69,7 +63,4 @@ def get_settings() -> Settings:
             ).split(",")
             if item.strip()
         ],
-        admin_email=required["ADMIN_EMAIL"],
-        admin_password_hash=required["ADMIN_PASSWORD_HASH"],
-        jwt_secret=required["JWT_SECRET"],
     )

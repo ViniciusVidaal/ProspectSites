@@ -54,26 +54,7 @@ GOOGLE_SPREADSHEET_ID
 GOOGLE_SERVICE_ACCOUNT_JSON
 GOOGLE_SHEET_NAME=Leads
 FRONTEND_ORIGINS=https://seu-projeto.vercel.app
-ADMIN_EMAIL=seuemail@exemplo.com
-ADMIN_PASSWORD_HASH=hash_argon2_da_sua_senha
-JWT_SECRET=chave_aleatoria_longa
 ```
-
-Gere o hash da senha localmente, depois de instalar as dependÃªncias:
-
-```powershell
-python -c "from pwdlib import PasswordHash; print(PasswordHash.recommended().hash('SUA_SENHA_AQUI'))"
-```
-
-Gere tambÃ©m uma chave aleatÃ³ria para assinar as sessÃµes:
-
-```powershell
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-Cadastre os dois resultados e o e-mail em `Environment` no Render. A sessÃ£o
-administrativa expira depois de 12 horas. Todas as rotas de pesquisa, leads,
-mÃ©tricas e arquivamento exigem autenticaÃ§Ã£o.
 
 O frontend usa:
 
