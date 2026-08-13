@@ -61,3 +61,12 @@ O frontend usa:
 ```text
 VITE_API_URL=https://seu-backend.onrender.com
 ```
+# CNPJ gratuito pelo Google Colab
+
+O painel possui o botão **Processar CNPJs no Colab**. Ele abre o notebook
+`colab/ProspectSites_CNPJ_Receita.ipynb`, que usa os Dados Abertos de CNPJ da
+Receita Federal e grava correspondências fortes na coluna `CNPJ` da planilha.
+
+O processamento não exige SerpApi. Os ZIPs grandes são processados um por vez
+no armazenamento temporário do Colab; o Google Drive recebe apenas o banco
+regional reduzido e o CSV de sugestões ambíguas para revisão.
