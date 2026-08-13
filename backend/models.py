@@ -40,6 +40,7 @@ class Lead(BaseModel):
     archived: bool = False
     cnpj: str = Field(default="", exclude=True)
     cnpj_captured: bool = False
+    cnpj_phone: str = ""
     address: str = Field(default="", exclude=True)
     city: str = Field(default="", exclude=True)
     state: str = Field(default="", exclude=True)

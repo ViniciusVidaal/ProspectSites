@@ -101,11 +101,14 @@ select:disabled { opacity: .55; cursor: not-allowed; }
 .archive-today:hover { border-color: var(--accent); color: var(--accent-strong); }
 .archive-today:disabled { opacity: .45; cursor: not-allowed; }
 .table-wrap { overflow: auto; }
-table { width: 100%; min-width: 1080px; border-collapse: collapse; }
+table { width: 100%; min-width: 1240px; border-collapse: collapse; }
 .cnpj-badge { display: inline-flex; align-items: center; gap: 5px; width: max-content; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .cnpj-badge.captured { color: #087a4f; background: rgba(16, 185, 129, .12); }
 .cnpj-badge.missing { color: var(--muted); background: var(--soft); }
 .archived-row { opacity: .82; }
+.cnpj-contact { display: grid; gap: 6px; }
+.cnpj-action { display: inline-flex; align-items: center; gap: 5px; width: max-content; padding: 7px 10px; border-radius: 9px; color: #fff; background: #1f8f63; font-size: 11px; font-weight: 750; text-decoration: none; }
+.cnpj-action.sent { background: var(--soft); color: var(--muted); border: 1px solid var(--line); }
 th { text-align: left; padding: 13px 12px; border-bottom: 1px solid var(--line); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-size: 9px; }
 th:first-child, td:first-child { padding-left: 22px; }
 td { padding: 14px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }

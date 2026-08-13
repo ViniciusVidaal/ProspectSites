@@ -89,7 +89,7 @@ def open_database(path):
     connection.execute("CREATE TABLE IF NOT EXISTS municipios (codigo TEXT PRIMARY KEY, nome TEXT)")
     connection.execute("""CREATE TABLE IF NOT EXISTS candidatos (
         cnpj TEXT PRIMARY KEY, basico TEXT, fantasia TEXT, razao TEXT DEFAULT '',
-        cidade TEXT, uf TEXT, situacao TEXT
+        cidade TEXT, uf TEXT, situacao TEXT, telefone TEXT DEFAULT ''
     )""")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_candidatos_uf ON candidatos(uf)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_candidatos_basico ON candidatos(basico)")
@@ -125,12 +125,19 @@ def build_regional_index(database_path, target_ufs, progress=print):
             if len(row) < 21 or row[19].upper() not in target_ufs:
                 continue
             city = connection.execute("SELECT nome FROM municipios WHERE codigo=?", (row[20],)).fetchone()
-            batch.append((row[0] + row[1] + row[2], row[0], row[4], city[0] if city else "", row[19].upper(), row[5]))
+            phone = ""
+            for ddd_index, phone_index in ((21, 22), (23, 24)):
+                ddd = re.sub(r"\D", "", row[ddd_index] if len(row) > ddd_index else "")
+                number = re.sub(r"\D", "", row[phone_index] if len(row) > phone_index else "")
+                if ddd and number:
+                    phone = f"55{ddd}{number}"
+                    break
+            batch.append((row[0] + row[1] + row[2], row[0], row[4], city[0] if city else "", row[19].upper(), row[5], phone))
             if len(batch) >= 5000:
-                connection.executemany("INSERT OR REPLACE INTO candidatos(cnpj,basico,fantasia,cidade,uf,situacao) VALUES (?,?,?,?,?,?)", batch)
+                connection.executemany("INSERT OR REPLACE INTO candidatos(cnpj,basico,fantasia,cidade,uf,situacao,telefone) VALUES (?,?,?,?,?,?,?)", batch)
                 connection.commit(); batch.clear()
         if batch:
-            connection.executemany("INSERT OR REPLACE INTO candidatos(cnpj,basico,fantasia,cidade,uf,situacao) VALUES (?,?,?,?,?,?)", batch)
+            connection.executemany("INSERT OR REPLACE INTO candidatos(cnpj,basico,fantasia,cidade,uf,situacao,telefone) VALUES (?,?,?,?,?,?,?)", batch)
             connection.commit()
         archive.unlink(missing_ok=True)
 
@@ -192,25 +199,25 @@ def match_lead(connection, company_name, city="", state="", phone=""):
         return None
     fts_query = " OR ".join(f'"{token}"' for token in search_tokens)
     rows = connection.execute(
-        """SELECT c.cnpj,c.fantasia,c.razao,c.cidade,c.uf,c.situacao
+        """SELECT c.cnpj,c.fantasia,c.razao,c.cidade,c.uf,c.situacao,c.telefone
            FROM candidate_search s JOIN candidatos c ON c.rowid=s.rowid
            WHERE candidate_search MATCH ? AND (?='' OR c.uf=?) LIMIT 5000""",
         (fts_query, uf, uf),
     )
     best = []
-    for cnpj, fantasy, legal, candidate_city, candidate_uf, status in rows:
+    for cnpj, fantasy, legal, candidate_city, candidate_uf, status, official_phone in rows:
         name_score = max(fuzz.token_set_ratio(wanted, compact_name(fantasy)), fuzz.token_set_ratio(wanted, compact_name(legal)))
         city_score = fuzz.ratio(city_normalized, normalize(candidate_city)) if city_normalized else 0
         score = name_score + (8 if city_score >= 90 else 0) + (2 if status == "02" else 0)
         if name_score >= 72:
-            best.append((score, name_score, city_score, cnpj, fantasy, legal, candidate_city, candidate_uf))
+            best.append((score, name_score, city_score, cnpj, fantasy, legal, candidate_city, candidate_uf, official_phone))
     best.sort(reverse=True)
     if not best:
         return None
     winner = best[0]
     margin = winner[0] - best[1][0] if len(best) > 1 else 100
     strong = winner[1] >= 92 and (not city_normalized or winner[2] >= 85) and margin >= 5
-    return {"cnpj": winner[3], "fantasia": winner[4], "razao": winner[5], "cidade": winner[6], "uf": winner[7], "score": winner[1], "margin": margin, "automatic": strong}
+    return {"cnpj": winner[3], "fantasia": winner[4], "razao": winner[5], "cidade": winner[6], "uf": winner[7], "telefone": winner[8], "score": winner[1], "margin": margin, "automatic": strong}
 
 
 def process_sheet(sheet, database_path, progress=print):
@@ -218,7 +225,7 @@ def process_sheet(sheet, database_path, progress=print):
     if not values:
         raise RuntimeError("A aba da planilha está vazia.")
     headers = values[0]
-    required = ["CNPJ", "Endereço", "Cidade", "UF"]
+    required = ["CNPJ", "Endereço", "Cidade", "UF", "Telefone CNPJ"]
     if any(header not in headers for header in required):
         raise RuntimeError("Aguarde o deploy do sistema criar as colunas CNPJ, Endereço, Cidade e UF.")
     indexes = {name: headers.index(name) for name in headers}
@@ -232,11 +239,14 @@ def process_sheet(sheet, database_path, progress=print):
         if not match:
             continue
         if match["automatic"]:
-            automatic_updates.append({"range": f"N{row_number}", "values": [[re.sub(r'\D', '', match['cnpj'])]]})
+            automatic_updates.extend([
+                {"range": f"N{row_number}", "values": [[re.sub(r'\D', '', match['cnpj'])]]},
+                {"range": f"R{row_number}", "values": [[re.sub(r'\D', '', match['telefone'])]]},
+            ])
         else:
-            review_rows.append([row_number, row[1], row[indexes["Cidade"]], row[indexes["UF"]], match["cnpj"], match["fantasia"], match["razao"], match["cidade"], match["uf"], match["score"], match["margin"]])
+            review_rows.append([row_number, row[1], row[indexes["Cidade"]], row[indexes["UF"]], match["cnpj"], match["fantasia"], match["razao"], match["cidade"], match["uf"], match["telefone"], match["score"], match["margin"]])
     if automatic_updates:
         sheet.batch_update(automatic_updates, value_input_option="RAW")
     connection.close()
-    progress(f"{len(automatic_updates)} CNPJ(s) gravado(s) automaticamente; {len(review_rows)} para revisão.")
+    progress(f"{len(automatic_updates) // 2} CNPJ(s) gravado(s) automaticamente; {len(review_rows)} para revisão.")
     return automatic_updates, review_rows
