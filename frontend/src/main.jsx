@@ -38,8 +38,12 @@ function readableError(detail) {
 }
 
 async function api(path, options) {
-  const response = await fetch(`${API}${path}`, {
+  const isRead = !options?.method || options.method === "GET";
+  const separator = path.includes("?") ? "&" : "?";
+  const requestPath = isRead ? `${path}${separator}_=${Date.now()}` : path;
+  const response = await fetch(`${API}${requestPath}`, {
     ...options,
+    cache: isRead ? "no-store" : undefined,
     headers: {
       "Content-Type": "application/json",
       ...(options?.headers || {}),

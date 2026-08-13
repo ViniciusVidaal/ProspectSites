@@ -2,7 +2,7 @@ import unittest
 
 from fastapi.encoders import jsonable_encoder
 
-from backend.cnpj import find_matching_cnpj, find_matching_cnpj_texts, normalize_cnpj, valid_cnpj
+from backend.cnpj import _safe_public_url, find_matching_cnpj, find_matching_cnpj_texts, normalize_cnpj, valid_cnpj
 from backend.models import Lead
 
 
@@ -41,6 +41,11 @@ class CnpjDiscoveryTests(unittest.TestCase):
         self.assertNotIn("cnpj", payload)
         self.assertNotIn("address", payload)
         self.assertTrue(payload["cnpj_captured"])
+
+    def test_rejects_private_result_urls(self):
+        self.assertFalse(_safe_public_url("http://127.0.0.1/internal"))
+        self.assertFalse(_safe_public_url("http://localhost/internal"))
+        self.assertTrue(_safe_public_url("https://example.com/company"))
 
 
 if __name__ == "__main__":

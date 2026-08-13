@@ -1,8 +1,10 @@
 import asyncio
 import html
+import ipaddress
 import random
 import re
 import unicodedata
+from urllib.parse import urlparse
 
 import httpx
 
@@ -66,19 +68,20 @@ def find_matching_cnpj_texts(texts: list[str], lead: Lead) -> str:
     best: tuple[float, str] | None = None
 
     for text in texts:
-        normalized = normalize_text(text)
-        text_tokens = set(normalized.split())
-        overlap = len(wanted_tokens & text_tokens) / max(1, len(wanted_tokens))
-        name_match = bool(wanted_name and wanted_name in normalized) or overlap >= 0.6
-        city_match = bool(city and city in normalized)
-        state_match = bool(state and re.search(rf"\b{re.escape(state)}\b", normalized))
-        address_match = len(address_tokens & text_tokens) >= 2
-        phone_match = bool(phone_tail and phone_tail in re.sub(r"\D", "", text))
-        if not name_match or not (city_match or address_match or phone_match):
-            continue
-        score = overlap * 4 + city_match * 4 + state_match * 2 + address_match * 2 + phone_match * 3
-        for raw in CNPJ_PATTERN.findall(text):
-            candidate = normalize_cnpj(raw)
+        for occurrence in CNPJ_PATTERN.finditer(text):
+            context = text[max(0, occurrence.start() - 1400):occurrence.end() + 1400]
+            normalized = normalize_text(context)
+            text_tokens = set(normalized.split())
+            overlap = len(wanted_tokens & text_tokens) / max(1, len(wanted_tokens))
+            name_match = bool(wanted_name and wanted_name in normalized) or overlap >= 0.6
+            city_match = bool(city and city in normalized)
+            state_match = bool(state and re.search(rf"\b{re.escape(state)}\b", normalized))
+            address_match = len(address_tokens & text_tokens) >= 2
+            phone_match = bool(phone_tail and phone_tail in re.sub(r"\D", "", context))
+            if not name_match or not (city_match or address_match or phone_match):
+                continue
+            score = overlap * 4 + city_match * 4 + state_match * 2 + address_match * 2 + phone_match * 3
+            candidate = normalize_cnpj(occurrence.group(1))
             if valid_cnpj(candidate) and (best is None or score > best[0]):
                 best = (score, candidate)
     return best[1] if best else ""
@@ -103,13 +106,57 @@ async def lookup_cnpj_serpapi(client: httpx.AsyncClient, lead: Lead, api_key: st
     if data.get("error"):
         raise RuntimeError(f"SerpApi: {data['error']}")
     texts = []
-    for result in data.get("organic_results", []):
+    organic_results = data.get("organic_results", [])
+    for result in organic_results:
         rich = result.get("rich_snippet", {})
         texts.append(" ".join(str(value) for value in (
             result.get("title", ""), result.get("snippet", ""),
             result.get("link", ""), rich,
         )))
-    return find_matching_cnpj_texts(texts, lead)
+    match = find_matching_cnpj_texts(texts, lead)
+    if match:
+        return match
+
+    for result in organic_results[:4]:
+        url = result.get("link", "")
+        if not _safe_public_url(url):
+            continue
+        try:
+            async with client.stream("GET", url) as page_response:
+                page_response.raise_for_status()
+                content_type = page_response.headers.get("content-type", "").lower()
+                if "text/html" not in content_type and "text/plain" not in content_type:
+                    continue
+                chunks = []
+                size = 0
+                async for chunk in page_response.aiter_bytes():
+                    size += len(chunk)
+                    if size > 2_000_000:
+                        break
+                    chunks.append(chunk)
+            page_text = _plain_html(b"".join(chunks).decode("utf-8", errors="ignore"))
+            match = find_matching_cnpj_texts([page_text], lead)
+            if match:
+                return match
+        except httpx.HTTPError:
+            continue
+    return ""
+
+
+def _safe_public_url(value: str) -> bool:
+    try:
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return False
+        if parsed.hostname.lower() in {"localhost", "localhost.localdomain"}:
+            return False
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+            return not (address.is_private or address.is_loopback or address.is_link_local or address.is_reserved)
+        except ValueError:
+            return True
+    except ValueError:
+        return False
 
 
 async def lookup_cnpj(client: httpx.AsyncClient, lead: Lead, max_queries: int | None = None) -> str:
