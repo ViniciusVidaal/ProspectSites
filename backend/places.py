@@ -60,6 +60,25 @@ def whatsapp_url(phone: str) -> str:
     return f"https://wa.me/{digits}"
 
 
+async def hydrate_lead_location(client: httpx.AsyncClient, api_key: str, lead: Lead) -> Lead:
+    if lead.city and lead.state:
+        return lead
+    response = await client.get(
+        f"https://places.googleapis.com/v1/places/{lead.place_id}",
+        headers={
+            "X-Goog-Api-Key": api_key,
+            "X-Goog-FieldMask": "formattedAddress,addressComponents",
+        },
+        params={"languageCode": "pt-BR", "regionCode": "BR"},
+    )
+    response.raise_for_status()
+    place = response.json()
+    components = place.get("addressComponents", [])
+    city = next((item.get("longText", "") for item in components if set(item.get("types", [])) & {"locality", "administrative_area_level_2"}), "")
+    state = next((item.get("shortText") or item.get("longText", "") for item in components if "administrative_area_level_1" in item.get("types", [])), "")
+    return lead.model_copy(update={"address": place.get("formattedAddress", ""), "city": city, "state": state})
+
+
 async def search_eligible_profiles(
     api_key: str,
     query: str,

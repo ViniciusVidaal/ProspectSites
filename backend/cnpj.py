@@ -97,13 +97,15 @@ async def lookup_cnpj(client: httpx.AsyncClient, lead: Lead) -> str:
     return ""
 
 
-async def enrich_leads_with_cnpj(leads: list[Lead], concurrency: int = 2) -> int:
+async def enrich_leads_with_cnpj(
+    leads: list[Lead], concurrency: int = 2, delay_range: tuple[float, float] = (0.35, 0.9)
+) -> int:
     semaphore = asyncio.Semaphore(max(1, concurrency))
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "Accept-Language": "pt-BR,pt;q=0.9"}
     async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
         async def enrich(lead: Lead) -> bool:
             async with semaphore:
-                await asyncio.sleep(random.uniform(0.35, 0.9))
+                await asyncio.sleep(random.uniform(*delay_range))
                 cnpj = await lookup_cnpj(client, lead)
                 lead.cnpj = cnpj
                 lead.cnpj_captured = bool(cnpj)

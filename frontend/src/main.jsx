@@ -88,7 +88,7 @@ function App() {
     let lastError;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
-        const leadItems = await api("/api/leads");
+        const leadItems = await api("/api/leads?include_archived=true");
         setLeads(leadItems);
         localStorage.setItem(LEADS_CACHE, JSON.stringify(leadItems));
         try {
@@ -156,7 +156,7 @@ function App() {
       ),
     [leads, dateFilter, today]
   );
-  const sentCount = leads.filter((lead) => lead.sent).length;
+  const sentCount = leads.filter((lead) => lead.sent && !lead.archived).length;
   const busy = job && !["completed", "failed"].includes(job.status);
 
   const search = async (event) => {
@@ -175,6 +175,16 @@ function App() {
         }),
       }));
     } catch (error) { setNotice(error.message); }
+  };
+
+  const backfillCnpjs = async () => {
+    if (!window.confirm("Buscar agora os CNPJs pendentes de todos os leads, inclusive arquivados? A consulta continuará em segundo plano.")) return;
+    setNotice("");
+    try {
+      setJob(await api("/api/cnpj/backfill", { method: "POST" }));
+    } catch (error) {
+      setNotice(error.message);
+    }
   };
 
   const whatsappHref = (lead) => {
@@ -251,7 +261,7 @@ function App() {
   };
 
   const archiveToday = async () => {
-    const todayLeads = leads.filter((lead) => lead.date === today);
+    const todayLeads = leads.filter((lead) => lead.date === today && !lead.archived);
     if (!todayLeads.length) return setNotice("Não há leads de hoje para arquivar.");
     if (!window.confirm(`Arquivar os ${todayLeads.length} lead(s) de hoje? Eles continuarão salvos no histórico.`)) return;
     const previous = leads;
@@ -270,7 +280,7 @@ function App() {
   };
 
   const archiveSent = async () => {
-    const sentLeads = leads.filter((lead) => lead.sent);
+    const sentLeads = leads.filter((lead) => lead.sent && !lead.archived);
     if (!sentLeads.length) return setNotice("Não há leads enviados para arquivar.");
     if (!window.confirm(`Arquivar os ${sentLeads.length} lead(s) já enviados? Eles continuarão salvos no histórico.`)) return;
     const previous = leads;
@@ -361,7 +371,7 @@ function App() {
       <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
 
       <section className="metrics-row">
-        <article><span><Users size={18}/></span><div><strong>{leads.length}</strong><small>Leads qualificados</small></div></article>
+        <article><span><Users size={18}/></span><div><strong>{stats.active ?? leads.filter((lead) => !lead.archived).length}</strong><small>Leads qualificados</small></div></article>
         <article><span><MessageCircle size={18}/></span><div><strong>{stats.sent || 0}</strong><small>Mensagens enviadas</small></div></article>
         <article><span><CalendarDays size={18}/></span><div><strong>{stats.sent_today || 0}</strong><small>Mensagens enviadas hoje</small></div></article>
         <article><span><ArchiveRestore size={18}/></span><div><strong>{stats.archived || 0}</strong><small>Leads arquivados</small></div></article>
@@ -402,11 +412,11 @@ function App() {
         <div className="leads-panel">
           <div className="panel-head">
             <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Contatos qualificados para abordagem individual.</p></div></div>
-            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
+            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={backfillCnpjs} disabled={busy} title="Buscar CNPJs que ainda não foram encontrados"><Search size={14}/>Buscar CNPJs pendentes</button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
           </div>
           <div className="table-wrap">
             <table><thead><tr><th>Posição</th><th>Empresa</th><th>CNPJ</th><th>Avaliações</th><th>Site atual</th><th>Contato</th><th>Status</th><th>Ações</th></tr></thead>
-              <tbody>{visible.map((lead, index) => <tr key={lead.place_id} className={lead.sent ? "sent-row" : ""}>
+              <tbody>{visible.map((lead, index) => <tr key={lead.place_id} className={`${lead.sent ? "sent-row" : ""} ${lead.archived ? "archived-row" : ""}`}>
                 <td><span className="rank">{index + 1}º</span></td>
                 <td><strong>{lead.company_name}</strong><small>{lead.date}</small></td>
                 <td>{lead.cnpj_captured ? <span className="cnpj-badge captured"><Check size={12}/>Capturado</span> : <span className="cnpj-badge missing">Não encontrado</span>}</td>
@@ -414,7 +424,7 @@ function App() {
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>
                 <td>{lead.sent ? <span className="sent-badge"><Check size={12}/>Enviado</span> : <span className="pending-badge">Pendente</span>}{lead.sent_at && <small>{lead.sent_at}</small>}</td>
-                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}<button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Arquivar lead">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button></div></td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Arquivar lead">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
               </tr>)}</tbody>
             </table>
             {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}

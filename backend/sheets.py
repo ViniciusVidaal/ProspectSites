@@ -284,6 +284,28 @@ class SheetsRepository:
         ).execute()
         return len(row_numbers)
 
+    def update_cnpjs(self, cnpjs_by_place_id: dict[str, str]) -> int:
+        updates = {place_id: cnpj for place_id, cnpj in cnpjs_by_place_id.items() if cnpj}
+        if not updates:
+            return 0
+        self.ensure_sheet()
+        rows = self.service.spreadsheets().values().get(
+            spreadsheetId=self.spreadsheet_id,
+            range=f"'{self.sheet_name}'!A2:J",
+        ).execute().get("values", [])
+        data = [
+            {"range": f"'{self.sheet_name}'!N{index + 2}", "values": [[updates[row[9]]]]}
+            for index, row in enumerate(rows)
+            if len(row) > 9 and row[9] in updates
+        ]
+        if not data:
+            return 0
+        self.service.spreadsheets().values().batchUpdate(
+            spreadsheetId=self.spreadsheet_id,
+            body={"valueInputOption": "RAW", "data": data},
+        ).execute()
+        return len(data)
+
     def stats(self) -> dict[str, int]:
         leads = self.list(include_archived=True)
         today = today_brazil()

@@ -1,13 +1,14 @@
 import asyncio
 from uuid import uuid4
 
+import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .cnpj import enrich_leads_with_cnpj
 from .models import ArchiveRequest, Job, SearchRequest
-from .places import search_eligible_profiles
+from .places import hydrate_lead_location, search_eligible_profiles
 from .sheets import SheetsRepository
 
 app = FastAPI(title="Prospect Sites API", version="2.0.0")
@@ -61,9 +62,13 @@ def health():
 
 
 @app.get("/api/leads")
-def list_leads():
+def list_leads(include_archived: bool = True):
     try:
-        return repository().list()
+        leads = repository().list(include_archived=include_archived)
+        return [
+            lead.model_copy(update={"sent": lead.sent or lead.archived})
+            for lead in leads
+        ]
     except Exception as exc:
         raise HTTPException(
             status_code=502, detail=f"Falha no Google Sheets: {exc}"
@@ -156,6 +161,53 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
     except Exception as exc:
         job.status = "failed"
         job.detail = str(exc)
+
+
+async def run_cnpj_backfill(job_id: str) -> None:
+    job = jobs[job_id]
+    try:
+        job.status = "running"
+        job.detail = "Carregando leads ativos e arquivados"
+        settings = get_settings()
+        leads = await asyncio.to_thread(repository().list, True)
+        pending = [
+            lead for lead in leads
+            if not lead.cnpj and (lead.phone or (lead.site_platform == "Instagram" and lead.current_site))
+        ]
+        job.total = len(pending)
+        captured = 0
+        async with httpx.AsyncClient(timeout=20) as places_client:
+            for start in range(0, len(pending), 10):
+                batch = pending[start:start + 10]
+                located = []
+                for lead in batch:
+                    try:
+                        located.append(await hydrate_lead_location(places_client, settings.places_api_key, lead))
+                    except httpx.HTTPError:
+                        located.append(lead)
+                found = await enrich_leads_with_cnpj(
+                    located, concurrency=1, delay_range=(2.5, 5.0)
+                )
+                captured += found
+                updates = {lead.place_id: lead.cnpj for lead in located if lead.cnpj}
+                await asyncio.to_thread(repository().update_cnpjs, updates)
+                job.processed = min(start + len(batch), job.total)
+                job.detail = f"{job.processed}/{job.total} analisado(s) · {captured} CNPJ(s) capturado(s)"
+        job.status = "completed"
+        job.detail = f"{job.total} lead(s) analisado(s) · {captured} CNPJ(s) capturado(s)"
+    except Exception as exc:
+        job.status = "failed"
+        job.detail = str(exc)
+
+
+@app.post("/api/cnpj/backfill", status_code=202)
+async def start_cnpj_backfill(background_tasks: BackgroundTasks):
+    if any(job.kind == "cnpj_backfill" and job.status in {"queued", "running"} for job in jobs.values()):
+        raise HTTPException(status_code=409, detail="A busca de CNPJs já está em andamento.")
+    job_id = str(uuid4())
+    jobs[job_id] = Job(id=job_id, kind="cnpj_backfill", status="queued")
+    background_tasks.add_task(run_cnpj_backfill, job_id)
+    return jobs[job_id]
 
 
 @app.post("/api/search", status_code=202)

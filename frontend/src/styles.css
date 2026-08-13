@@ -105,6 +105,7 @@ table { width: 100%; min-width: 1080px; border-collapse: collapse; }
 .cnpj-badge { display: inline-flex; align-items: center; gap: 5px; width: max-content; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .cnpj-badge.captured { color: #087a4f; background: rgba(16, 185, 129, .12); }
 .cnpj-badge.missing { color: var(--muted); background: var(--soft); }
+.archived-row { opacity: .82; }
 th { text-align: left; padding: 13px 12px; border-bottom: 1px solid var(--line); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-size: 9px; }
 th:first-child, td:first-child { padding-left: 22px; }
 td { padding: 14px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
