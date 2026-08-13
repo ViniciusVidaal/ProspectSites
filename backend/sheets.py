@@ -23,6 +23,7 @@ HEADERS = [
     "Enviado",
     "Data do Envio",
     "Arquivado",
+    "CNPJ",
 ]
 
 
@@ -60,7 +61,7 @@ class SheetsRepository:
                 },
             ).execute()
 
-        header_range = f"'{self.sheet_name}'!A1:M1"
+        header_range = f"'{self.sheet_name}'!A1:N1"
         current = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id, range=header_range
         ).execute().get("values", [])
@@ -76,7 +77,7 @@ class SheetsRepository:
         self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A2:M",
+            range=f"'{self.sheet_name}'!A2:N",
         ).execute().get("values", [])
         leads = []
         for row in rows:
@@ -102,7 +103,7 @@ class SheetsRepository:
                         )
                     )
                 continue
-            padded = row + [""] * (13 - len(row))
+            padded = row + [""] * (14 - len(row))
             if padded[9]:
                 lead = Lead(
                         date=padded[0],
@@ -122,6 +123,7 @@ class SheetsRepository:
                         archived=str(padded[12]).strip().lower() in {
                             "sim", "true", "1", "arquivado"
                         },
+                        cnpj=padded[13],
                     )
                 contactable = bool(
                     lead.phone or (
@@ -160,12 +162,13 @@ class SheetsRepository:
                 "Sim" if lead.sent else "Não",
                 lead.sent_at,
                 "Sim" if lead.archived else "NÃ£o",
+                lead.cnpj,
             ]
             for lead in fresh
         ]
         self.service.spreadsheets().values().append(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A:M",
+            range=f"'{self.sheet_name}'!A:N",
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": values},
@@ -176,7 +179,7 @@ class SheetsRepository:
         self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
-            range=f"'{self.sheet_name}'!A2:M",
+            range=f"'{self.sheet_name}'!A2:N",
         ).execute().get("values", [])
         row_number = next(
             (

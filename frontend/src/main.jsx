@@ -405,10 +405,11 @@ function App() {
             <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
           </div>
           <div className="table-wrap">
-            <table><thead><tr><th>Posição</th><th>Empresa</th><th>Avaliações</th><th>Site atual</th><th>Contato</th><th>Status</th><th>Ações</th></tr></thead>
+            <table><thead><tr><th>Posição</th><th>Empresa</th><th>CNPJ</th><th>Avaliações</th><th>Site atual</th><th>Contato</th><th>Status</th><th>Ações</th></tr></thead>
               <tbody>{visible.map((lead, index) => <tr key={lead.place_id} className={lead.sent ? "sent-row" : ""}>
                 <td><span className="rank">{index + 1}º</span></td>
                 <td><strong>{lead.company_name}</strong><small>{lead.date}</small></td>
+                <td>{lead.cnpj_captured ? <span className="cnpj-badge captured"><Check size={12}/>Capturado</span> : <span className="cnpj-badge missing">Não encontrado</span>}</td>
                 <td><span className="rating"><Star size={13}/>{Number(lead.rating || 0).toFixed(1)} <b>({lead.review_count})</b></span></td>
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>

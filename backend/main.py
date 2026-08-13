@@ -5,6 +5,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
+from .cnpj import enrich_leads_with_cnpj
 from .models import ArchiveRequest, Job, SearchRequest
 from .places import search_eligible_profiles
 from .sheets import SheetsRepository
@@ -136,6 +137,8 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
         )
         job.total = report.scanned
         job.processed = report.scanned
+        job.detail = "Identificando CNPJs por nome e localização"
+        captured_cnpjs = await enrich_leads_with_cnpj(report.eligible)
         inserted = await asyncio.to_thread(
             repository().append_new, report.eligible
         )
@@ -146,6 +149,7 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
             f"{report.scanned} perfil(is) analisado(s) · "
             f"{len(report.eligible)} qualificado(s) · "
             f"{duplicates} duplicado(s) · "
+            f"{captured_cnpjs} CNPJ(s) capturado(s) · "
             f"{report.pages} página(s) consultada(s) · "
             f"mais de {request.minimum_reviews} avaliações"
         )

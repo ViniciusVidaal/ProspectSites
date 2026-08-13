@@ -73,7 +73,8 @@ async def search_eligible_profiles(
             "places.id,places.displayName,places.nationalPhoneNumber,"
             "places.internationalPhoneNumber,places.websiteUri,"
             "places.userRatingCount,places.rating,places.googleMapsUri,"
-            "places.businessStatus,nextPageToken"
+            "places.businessStatus,places.formattedAddress,"
+            "places.addressComponents,nextPageToken"
         ),
     }
     base_payload = {
@@ -124,6 +125,9 @@ async def search_eligible_profiles(
                     or place.get("nationalPhoneNumber")
                     or ""
                 )
+                components = place.get("addressComponents", [])
+                city = next((item.get("longText", "") for item in components if set(item.get("types", [])) & {"locality", "administrative_area_level_2"}), "")
+                state = next((item.get("shortText") or item.get("longText", "") for item in components if "administrative_area_level_1" in item.get("types", [])), "")
                 if not phone and platform != "Instagram":
                     continue
                 report.eligible.append(
@@ -140,6 +144,9 @@ async def search_eligible_profiles(
                         rating=float(place.get("rating", 0) or 0),
                         maps_link=place.get("googleMapsUri", ""),
                         place_id=place_id,
+                        address=place.get("formattedAddress", ""),
+                        city=city,
+                        state=state,
                     )
                 )
 

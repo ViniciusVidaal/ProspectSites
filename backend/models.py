@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -36,6 +38,17 @@ class Lead(BaseModel):
     sent: bool = False
     sent_at: str = ""
     archived: bool = False
+    cnpj: str = Field(default="", exclude=True)
+    cnpj_captured: bool = False
+    address: str = Field(default="", exclude=True)
+    city: str = Field(default="", exclude=True)
+    state: str = Field(default="", exclude=True)
+
+    @model_validator(mode="after")
+    def normalize_cnpj(self):
+        self.cnpj = re.sub(r"\D", "", self.cnpj)
+        self.cnpj_captured = len(self.cnpj) == 14
+        return self
 
 
 class ArchiveRequest(BaseModel):
