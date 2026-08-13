@@ -89,11 +89,18 @@ def find_matching_cnpj_texts(texts: list[str], lead: Lead) -> str:
 
 async def lookup_cnpj_serpapi(client: httpx.AsyncClient, lead: Lead, api_key: str) -> str:
     location = " ".join(part for part in (lead.city, lead.state) if part).strip()
+    phone_digits = re.sub(r"\D", "", lead.phone)
+    national_phone = phone_digits[2:] if phone_digits.startswith("55") and len(phone_digits) > 11 else phone_digits
+    subscriber = national_phone[2:] if len(national_phone) in {10, 11} else national_phone[-9:]
+    phone = f"{subscriber[:-4]}-{subscriber[-4:]}" if len(subscriber) >= 8 else subscriber
+    query = f'"{lead.company_name}" {location} CNPJ'
+    if phone:
+        query = f'"{lead.company_name}" "{phone}" {location} CNPJ'
     response = await client.get(
         "https://serpapi.com/search.json",
         params={
             "engine": "google",
-            "q": f'"{lead.company_name}" {location} CNPJ',
+            "q": query,
             "google_domain": "google.com.br",
             "gl": "br",
             "hl": "pt-br",
