@@ -95,7 +95,7 @@ async def lookup_cnpj_serpapi(client: httpx.AsyncClient, lead: Lead, api_key: st
     phone = f"{subscriber[:-4]}-{subscriber[-4:]}" if len(subscriber) >= 8 else subscriber
     query = f'"{lead.company_name}" {location} CNPJ'
     if phone:
-        query = f'"{lead.company_name}" "{phone}" {location} CNPJ'
+        query = f'"{phone}" CNPJ'
     response = await client.get(
         "https://serpapi.com/search.json",
         params={
