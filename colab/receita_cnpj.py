@@ -39,6 +39,23 @@ def compact_name(value):
     return " ".join(word for word in normalize(value).split() if word.lower() not in LEGAL_WORDS)
 
 
+def name_similarity(wanted, candidate):
+    wanted_tokens = set(compact_name(wanted).split())
+    candidate_tokens = set(compact_name(candidate).split())
+    if not wanted_tokens or not candidate_tokens:
+        return 0.0, 0.0
+    common = wanted_tokens & candidate_tokens
+    required = 1 if len(wanted_tokens) == 1 else 2
+    if len(common) < required:
+        return 0.0, 0.0
+    coverage = len(common) / max(1, len(wanted_tokens))
+    score = max(
+        fuzz.ratio(" ".join(sorted(wanted_tokens)), " ".join(sorted(candidate_tokens))),
+        fuzz.token_sort_ratio(" ".join(wanted_tokens), " ".join(candidate_tokens)),
+    )
+    return score, coverage
+
+
 def _webdav_list(path=""):
     url = RECEITA_WEBDAV + path.strip("/") + ("/" if path else "")
     response = requests.request(
@@ -95,6 +112,23 @@ def open_database(path):
     connection.execute("CREATE INDEX IF NOT EXISTS idx_candidatos_basico ON candidatos(basico)")
     connection.execute("CREATE VIRTUAL TABLE IF NOT EXISTS candidate_search USING fts5(search_text)")
     return connection
+
+
+def regional_index_ready(database_path):
+    database_path = Path(database_path)
+    if not database_path.is_file():
+        return False
+    try:
+        connection = sqlite3.connect(database_path, timeout=10)
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(candidatos)")
+        }
+        candidates = connection.execute("SELECT COUNT(*) FROM candidatos").fetchone()[0]
+        searches = connection.execute("SELECT COUNT(*) FROM candidate_search").fetchone()[0]
+        connection.close()
+        return "telefone" in columns and candidates > 0 and searches == candidates
+    except sqlite3.Error:
+        return False
 
 
 def build_regional_index(database_path, target_ufs, progress=print):
@@ -206,18 +240,21 @@ def match_lead(connection, company_name, city="", state="", phone=""):
     )
     best = []
     for cnpj, fantasy, legal, candidate_city, candidate_uf, status, official_phone in rows:
-        name_score = max(fuzz.token_set_ratio(wanted, compact_name(fantasy)), fuzz.token_set_ratio(wanted, compact_name(legal)))
+        fantasy_score, fantasy_coverage = name_similarity(wanted, fantasy)
+        legal_score, legal_coverage = name_similarity(wanted, legal)
+        name_score, coverage = max((fantasy_score, fantasy_coverage), (legal_score, legal_coverage))
         city_score = fuzz.ratio(city_normalized, normalize(candidate_city)) if city_normalized else 0
         score = name_score + (8 if city_score >= 90 else 0) + (2 if status == "02" else 0)
-        if name_score >= 72:
-            best.append((score, name_score, city_score, cnpj, fantasy, legal, candidate_city, candidate_uf, official_phone))
+        if name_score >= 65 and coverage >= 0.5:
+            best.append((score, name_score, city_score, coverage, cnpj, fantasy, legal, candidate_city, candidate_uf, official_phone))
     best.sort(reverse=True)
     if not best:
         return None
     winner = best[0]
     margin = winner[0] - best[1][0] if len(best) > 1 else 100
-    strong = winner[1] >= 92 and (not city_normalized or winner[2] >= 85) and margin >= 5
-    return {"cnpj": winner[3], "fantasia": winner[4], "razao": winner[5], "cidade": winner[6], "uf": winner[7], "telefone": winner[8], "score": winner[1], "margin": margin, "automatic": strong}
+    location_ok = winner[2] >= 85 if city_normalized else bool(uf and winner[8] == uf)
+    strong = winner[1] >= 88 and winner[3] >= 0.75 and location_ok and margin >= 8
+    return {"cnpj": winner[4], "fantasia": winner[5], "razao": winner[6], "cidade": winner[7], "uf": winner[8], "telefone": winner[9], "score": winner[1], "coverage": winner[3], "margin": margin, "automatic": strong}
 
 
 def process_sheet(sheet, database_path, progress=print):
