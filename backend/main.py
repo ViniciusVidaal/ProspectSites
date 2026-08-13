@@ -186,6 +186,12 @@ async def run_cnpj_backfill(job_id: str) -> None:
                     captured += 1
                     await asyncio.to_thread(repository().update_enrichment, [lead])
                 job.processed = index
+                if index < job.total:
+                    job.detail = (
+                        f"{index}/{job.total} analisado(s) · {captured} CNPJ(s) capturado(s) · "
+                        f"respeitando o limite da Econodata"
+                    )
+                    await asyncio.sleep(1.1)
         job.status = "completed"
         job.detail = f"{job.total} lead(s) analisado(s) · {captured} CNPJ(s) capturado(s)"
     except EconodataInsufficientTokens:

@@ -1,4 +1,6 @@
+import asyncio
 import re
+import time
 
 import httpx
 
@@ -6,6 +8,10 @@ from .models import Lead
 
 
 class EconodataInsufficientTokens(RuntimeError):
+    pass
+
+
+class EconodataRateLimit(RuntimeError):
     pass
 
 
@@ -48,13 +54,26 @@ class EconodataClient:
         criteria = {"nome": lead.company_name}
         if len(lead.state.strip()) == 2:
             criteria["uf"] = lead.state.strip().upper()
-        response = await client.post(
-            "https://api.econodata.com.br/v4/companies/match",
-            json={"criterios": criteria},
-            headers={"Authorization": f"Bearer {self.api_key}"},
-        )
-        if response.status_code == 429:
-            raise RuntimeError("A Econodata atingiu o limite de consultas da conta.")
+        for attempt in range(3):
+            response = await client.post(
+                "https://api.econodata.com.br/v4/companies/match",
+                json={"criterios": criteria},
+                headers={"Authorization": f"Bearer {self.api_key}"},
+            )
+            if response.status_code != 429:
+                break
+            if attempt == 2:
+                raise EconodataRateLimit("A Econodata manteve o bloqueio temporário de consultas.")
+            retry_after = response.headers.get("Retry-After", "")
+            reset_at = response.headers.get("X-RateLimit-Reset", "")
+            try:
+                wait_seconds = float(retry_after)
+            except ValueError:
+                try:
+                    wait_seconds = max(1, float(reset_at) - time.time())
+                except ValueError:
+                    wait_seconds = 61
+            await asyncio.sleep(min(max(wait_seconds, 1), 65))
         if response.status_code in {401, 403}:
             raise RuntimeError("A Econodata recusou a chave de acesso.")
         if response.status_code == 402:
