@@ -215,6 +215,11 @@ async def run_cnpj_backfill(job_id: str) -> None:
 
 @app.post("/api/cnpj/backfill", status_code=202)
 async def start_cnpj_backfill(background_tasks: BackgroundTasks):
+    if not get_settings().serpapi_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Configure SERPAPI_API_KEY no Render para buscar CNPJs sem bloqueio do DuckDuckGo.",
+        )
     if any(job.kind == "cnpj_backfill" and job.status in {"queued", "running"} for job in jobs.values()):
         raise HTTPException(status_code=409, detail="A busca de CNPJs já está em andamento.")
     job_id = str(uuid4())
