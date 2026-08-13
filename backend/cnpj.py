@@ -82,7 +82,7 @@ def find_matching_cnpj(page: str, lead: Lead) -> str:
 
 async def lookup_cnpj(client: httpx.AsyncClient, lead: Lead, max_queries: int | None = None) -> str:
     location = " ".join(part for part in (lead.city, lead.state) if part).strip()
-    queries = [f'"{lead.company_name}" "{location}" CNPJ']
+    queries = [f'"{lead.company_name}" {location} CNPJ']
     if lead.address and normalize_text(lead.address) != normalize_text(location):
         queries.append(f'"{lead.company_name}" "{lead.address}" CNPJ')
     for query in queries[:max_queries]:
