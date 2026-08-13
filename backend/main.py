@@ -56,6 +56,7 @@ def health():
                 )
             ),
             "search": "google_places",
+            "cnpj_search": "serpapi" if settings.serpapi_api_key else "duckduckgo",
         }
     except RuntimeError as exc:
         return {"status": "configuration_required", "detail": str(exc)}
@@ -143,7 +144,9 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
         job.total = report.scanned
         job.processed = report.scanned
         job.detail = "Identificando CNPJs por nome e localização"
-        captured_cnpjs = await enrich_leads_with_cnpj(report.eligible)
+        captured_cnpjs = await enrich_leads_with_cnpj(
+            report.eligible, serpapi_api_key=settings.serpapi_api_key
+        )
         inserted = await asyncio.to_thread(
             repository().append_new, report.eligible
         )
@@ -192,7 +195,11 @@ async def run_cnpj_backfill(job_id: str) -> None:
                 located = await asyncio.gather(*(locate(lead) for lead in batch))
                 job.detail = f"Buscando CNPJs {start + 1}-{min(start + len(batch), job.total)} de {job.total}"
                 found = await enrich_leads_with_cnpj(
-                    located, concurrency=2, delay_range=(3.0, 6.0), max_queries=1
+                    located,
+                    concurrency=2,
+                    delay_range=(1.5, 3.0) if settings.serpapi_api_key else (3.0, 6.0),
+                    max_queries=1,
+                    serpapi_api_key=settings.serpapi_api_key,
                 )
                 captured += found
                 updates = {lead.place_id: lead.cnpj for lead in located if lead.cnpj}

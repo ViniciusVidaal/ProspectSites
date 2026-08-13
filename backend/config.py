@@ -15,6 +15,7 @@ class Settings(BaseModel):
     service_account_info: dict | None = None
     sheet_name: str
     frontend_origins: list[str]
+    serpapi_api_key: str = ""
 
 
 @lru_cache
@@ -63,4 +64,5 @@ def get_settings() -> Settings:
             ).split(",")
             if item.strip()
         ],
+        serpapi_api_key=os.getenv("SERPAPI_API_KEY", ""),
     )

@@ -52,6 +52,10 @@ def _name_tokens(name: str) -> set[str]:
 
 
 def find_matching_cnpj(page: str, lead: Lead) -> str:
+    return find_matching_cnpj_texts(result_texts(page), lead)
+
+
+def find_matching_cnpj_texts(texts: list[str], lead: Lead) -> str:
     wanted_name = normalize_text(lead.company_name)
     wanted_tokens = _name_tokens(lead.company_name)
     city = normalize_text(lead.city)
@@ -61,7 +65,7 @@ def find_matching_cnpj(page: str, lead: Lead) -> str:
     phone_tail = phone_digits[-8:] if len(phone_digits) >= 8 else ""
     best: tuple[float, str] | None = None
 
-    for text in result_texts(page):
+    for text in texts:
         normalized = normalize_text(text)
         text_tokens = set(normalized.split())
         overlap = len(wanted_tokens & text_tokens) / max(1, len(wanted_tokens))
@@ -78,6 +82,34 @@ def find_matching_cnpj(page: str, lead: Lead) -> str:
             if valid_cnpj(candidate) and (best is None or score > best[0]):
                 best = (score, candidate)
     return best[1] if best else ""
+
+
+async def lookup_cnpj_serpapi(client: httpx.AsyncClient, lead: Lead, api_key: str) -> str:
+    location = " ".join(part for part in (lead.city, lead.state) if part).strip()
+    response = await client.get(
+        "https://serpapi.com/search.json",
+        params={
+            "engine": "google",
+            "q": f'"{lead.company_name}" {location} CNPJ',
+            "google_domain": "google.com.br",
+            "gl": "br",
+            "hl": "pt-br",
+            "num": 10,
+            "api_key": api_key,
+        },
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("error"):
+        raise RuntimeError(f"SerpApi: {data['error']}")
+    texts = []
+    for result in data.get("organic_results", []):
+        rich = result.get("rich_snippet", {})
+        texts.append(" ".join(str(value) for value in (
+            result.get("title", ""), result.get("snippet", ""),
+            result.get("link", ""), rich,
+        )))
+    return find_matching_cnpj_texts(texts, lead)
 
 
 async def lookup_cnpj(client: httpx.AsyncClient, lead: Lead, max_queries: int | None = None) -> str:
@@ -100,6 +132,7 @@ async def lookup_cnpj(client: httpx.AsyncClient, lead: Lead, max_queries: int | 
 async def enrich_leads_with_cnpj(
     leads: list[Lead], concurrency: int = 2, delay_range: tuple[float, float] = (0.35, 0.9),
     max_queries: int | None = None,
+    serpapi_api_key: str = "",
 ) -> int:
     semaphore = asyncio.Semaphore(max(1, concurrency))
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "Accept-Language": "pt-BR,pt;q=0.9"}
@@ -107,7 +140,13 @@ async def enrich_leads_with_cnpj(
         async def enrich(lead: Lead) -> bool:
             async with semaphore:
                 await asyncio.sleep(random.uniform(*delay_range))
-                cnpj = await lookup_cnpj(client, lead, max_queries=max_queries)
+                try:
+                    if serpapi_api_key:
+                        cnpj = await lookup_cnpj_serpapi(client, lead, serpapi_api_key)
+                    else:
+                        cnpj = await lookup_cnpj(client, lead, max_queries=max_queries)
+                except (httpx.HTTPError, RuntimeError, ValueError):
+                    cnpj = ""
                 lead.cnpj = cnpj
                 lead.cnpj_captured = bool(cnpj)
                 return bool(cnpj)

@@ -2,7 +2,7 @@ import unittest
 
 from fastapi.encoders import jsonable_encoder
 
-from backend.cnpj import find_matching_cnpj, normalize_cnpj, valid_cnpj
+from backend.cnpj import find_matching_cnpj, find_matching_cnpj_texts, normalize_cnpj, valid_cnpj
 from backend.models import Lead
 
 
@@ -30,6 +30,10 @@ class CnpjDiscoveryTests(unittest.TestCase):
     def test_accepts_matching_name_and_location(self):
         page = '<div class="result__body">Padaria X Brasília DF CNPJ 11.222.333/0001-81</div>'
         self.assertEqual(find_matching_cnpj(page, self.lead), "11222333000181")
+
+    def test_accepts_structured_search_snippet(self):
+        snippets = ["Padaria X - CNPJ 11.222.333/0001-81, localizada em Brasília, DF"]
+        self.assertEqual(find_matching_cnpj_texts(snippets, self.lead), "11222333000181")
 
     def test_public_payload_hides_cnpj_and_location(self):
         lead = self.lead.model_copy(update={"cnpj": "11222333000181", "cnpj_captured": True})
