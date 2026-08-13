@@ -188,13 +188,13 @@ async def enrich_leads_with_cnpj(
         async def enrich(lead: Lead) -> bool:
             async with semaphore:
                 await asyncio.sleep(random.uniform(*delay_range))
-                try:
-                    if serpapi_api_key:
-                        cnpj = await lookup_cnpj_serpapi(client, lead, serpapi_api_key)
-                    else:
+                if serpapi_api_key:
+                    cnpj = await lookup_cnpj_serpapi(client, lead, serpapi_api_key)
+                else:
+                    try:
                         cnpj = await lookup_cnpj(client, lead, max_queries=max_queries)
-                except (httpx.HTTPError, RuntimeError, ValueError):
-                    cnpj = ""
+                    except (httpx.HTTPError, RuntimeError, ValueError):
+                        cnpj = ""
                 lead.cnpj = cnpj
                 lead.cnpj_captured = bool(cnpj)
                 return bool(cnpj)
