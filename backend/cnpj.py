@@ -102,10 +102,13 @@ async def lookup_cnpj_serpapi(client: httpx.AsyncClient, lead: Lead, api_key: st
             "api_key": api_key,
         },
     )
-    response.raise_for_status()
+    if response.status_code == 429:
+        raise RuntimeError("A SerpApi atingiu o limite de pesquisas da conta. Verifique os créditos ou o plano antes de continuar.")
+    if response.is_error:
+        raise RuntimeError(f"A SerpApi recusou a pesquisa (HTTP {response.status_code}).")
     data = response.json()
     if data.get("error"):
-        raise RuntimeError(f"SerpApi: {data['error']}")
+        raise RuntimeError("A SerpApi recusou a pesquisa. Verifique os créditos e a configuração da conta.")
     texts = []
     organic_results = data.get("organic_results", [])
     for result in organic_results:

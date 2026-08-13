@@ -194,16 +194,22 @@ async def run_cnpj_backfill(job_id: str) -> None:
                         return lead
 
                 located = await asyncio.gather(*(locate(lead) for lead in batch))
+                await asyncio.to_thread(repository().update_enrichment, located)
+                ready = [lead for lead in located if lead.city and lead.state]
+                if not ready:
+                    job.processed = min(start + len(batch), job.total)
+                    job.detail = f"{job.processed}/{job.total} analisado(s) · aguardando localização dos demais"
+                    continue
                 job.detail = f"Buscando CNPJs {start + 1}-{min(start + len(batch), job.total)} de {job.total}"
                 found = await enrich_leads_with_cnpj(
-                    located,
+                    ready,
                     concurrency=2,
                     delay_range=(1.5, 3.0) if settings.serpapi_api_key else (3.0, 6.0),
                     max_queries=1,
                     serpapi_api_key=settings.serpapi_api_key,
                 )
                 captured += found
-                await asyncio.to_thread(repository().update_enrichment, located)
+                await asyncio.to_thread(repository().update_enrichment, ready)
                 job.processed = min(start + len(batch), job.total)
                 job.detail = f"{job.processed}/{job.total} analisado(s) · {captured} CNPJ(s) capturado(s)"
         job.status = "completed"
