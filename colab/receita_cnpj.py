@@ -82,8 +82,9 @@ def csv_rows_from_zip(path):
 
 
 def open_database(path):
-    connection = sqlite3.connect(path)
-    connection.execute("PRAGMA journal_mode=WAL")
+    connection = sqlite3.connect(path, timeout=60)
+    connection.execute("PRAGMA busy_timeout=60000")
+    connection.execute("PRAGMA journal_mode=DELETE")
     connection.execute("PRAGMA synchronous=NORMAL")
     connection.execute("CREATE TABLE IF NOT EXISTS municipios (codigo TEXT PRIMARY KEY, nome TEXT)")
     connection.execute("""CREATE TABLE IF NOT EXISTS candidatos (
@@ -98,6 +99,9 @@ def open_database(path):
 
 def build_regional_index(database_path, target_ufs, progress=print):
     database_path = Path(database_path)
+    if str(database_path).startswith("/content/"):
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            Path(f"{database_path}{suffix}").unlink(missing_ok=True)
     work = Path("/content/cnpj_receita_work")
     work.mkdir(parents=True, exist_ok=True)
     connection = open_database(database_path)
