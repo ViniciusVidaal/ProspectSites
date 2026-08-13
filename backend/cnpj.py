@@ -80,12 +80,12 @@ def find_matching_cnpj(page: str, lead: Lead) -> str:
     return best[1] if best else ""
 
 
-async def lookup_cnpj(client: httpx.AsyncClient, lead: Lead) -> str:
+async def lookup_cnpj(client: httpx.AsyncClient, lead: Lead, max_queries: int | None = None) -> str:
     location = " ".join(part for part in (lead.city, lead.state) if part).strip()
     queries = [f'"{lead.company_name}" "{location}" CNPJ']
     if lead.address and normalize_text(lead.address) != normalize_text(location):
         queries.append(f'"{lead.company_name}" "{lead.address}" CNPJ')
-    for query in queries:
+    for query in queries[:max_queries]:
         try:
             response = await client.get("https://html.duckduckgo.com/html/", params={"q": query, "kl": "br-pt"})
             response.raise_for_status()
@@ -98,7 +98,8 @@ async def lookup_cnpj(client: httpx.AsyncClient, lead: Lead) -> str:
 
 
 async def enrich_leads_with_cnpj(
-    leads: list[Lead], concurrency: int = 2, delay_range: tuple[float, float] = (0.35, 0.9)
+    leads: list[Lead], concurrency: int = 2, delay_range: tuple[float, float] = (0.35, 0.9),
+    max_queries: int | None = None,
 ) -> int:
     semaphore = asyncio.Semaphore(max(1, concurrency))
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "Accept-Language": "pt-BR,pt;q=0.9"}
@@ -106,7 +107,7 @@ async def enrich_leads_with_cnpj(
         async def enrich(lead: Lead) -> bool:
             async with semaphore:
                 await asyncio.sleep(random.uniform(*delay_range))
-                cnpj = await lookup_cnpj(client, lead)
+                cnpj = await lookup_cnpj(client, lead, max_queries=max_queries)
                 lead.cnpj = cnpj
                 lead.cnpj_captured = bool(cnpj)
                 return bool(cnpj)

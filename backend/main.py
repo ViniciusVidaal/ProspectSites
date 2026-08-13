@@ -177,8 +177,8 @@ async def run_cnpj_backfill(job_id: str) -> None:
         job.total = len(pending)
         captured = 0
         async with httpx.AsyncClient(timeout=8) as places_client:
-            for start in range(0, len(pending), 10):
-                batch = pending[start:start + 10]
+            for start in range(0, len(pending), 5):
+                batch = pending[start:start + 5]
                 job.detail = f"Localizando empresas {start + 1}-{min(start + len(batch), job.total)} de {job.total}"
                 location_semaphore = asyncio.Semaphore(5)
 
@@ -192,7 +192,7 @@ async def run_cnpj_backfill(job_id: str) -> None:
                 located = await asyncio.gather(*(locate(lead) for lead in batch))
                 job.detail = f"Buscando CNPJs {start + 1}-{min(start + len(batch), job.total)} de {job.total}"
                 found = await enrich_leads_with_cnpj(
-                    located, concurrency=1, delay_range=(2.5, 5.0)
+                    located, concurrency=2, delay_range=(3.0, 6.0), max_queries=1
                 )
                 captured += found
                 updates = {lead.place_id: lead.cnpj for lead in located if lead.cnpj}
