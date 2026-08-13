@@ -16,5 +16,3 @@ services:
         value: Leads
       - key: FRONTEND_ORIGINS
         sync: false
-      - key: ECONODATA_API_KEY
-        sync: false

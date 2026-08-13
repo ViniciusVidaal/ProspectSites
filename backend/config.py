@@ -15,7 +15,6 @@ class Settings(BaseModel):
     service_account_info: dict | None = None
     sheet_name: str
     frontend_origins: list[str]
-    econodata_api_key: str = ""
 
 
 @lru_cache
@@ -64,5 +63,4 @@ def get_settings() -> Settings:
             ).split(",")
             if item.strip()
         ],
-        econodata_api_key=os.getenv("ECONODATA_API_KEY", "").strip(),
     )

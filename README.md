@@ -61,14 +61,3 @@ O frontend usa:
 ```text
 VITE_API_URL=https://seu-backend.onrender.com
 ```
-# Consulta de CNPJ pela Econodata
-
-O botão **Processar CNPJs** envia o nome de cada empresa sem CNPJ ao endpoint
-da Econodata e salva somente o número do CNPJ retornado. A chave permanece no
-backend do Render e nunca é enviada ao navegador.
-
-Configure no Render:
-
-```text
-ECONODATA_API_KEY=sua-chave
-```

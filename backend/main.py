@@ -1,12 +1,10 @@
 import asyncio
 from uuid import uuid4
 
-import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .econodata import EconodataClient, EconodataInsufficientTokens
 from .models import ArchiveRequest, Job, SearchRequest
 from .places import search_eligible_profiles
 from .sheets import SheetsRepository
@@ -56,7 +54,6 @@ def health():
                 )
             ),
             "search": "google_places",
-            "cnpj_search": "econodata" if settings.econodata_api_key else "configuration_required",
         }
     except RuntimeError as exc:
         return {"status": "configuration_required", "detail": str(exc)}
@@ -153,73 +150,12 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
             f"{report.scanned} perfil(is) analisado(s) · "
             f"{len(report.eligible)} qualificado(s) · "
             f"{duplicates} duplicado(s) · "
-            f"CNPJ pendente para consulta na Econodata · "
             f"{report.pages} página(s) consultada(s) · "
             f"mais de {request.minimum_reviews} avaliações"
         )
     except Exception as exc:
         job.status = "failed"
         job.detail = str(exc)
-
-
-async def run_cnpj_backfill(job_id: str) -> None:
-    job = jobs[job_id]
-    captured = 0
-    try:
-        job.status = "running"
-        job.detail = "Carregando leads ativos e arquivados"
-        settings = get_settings()
-        econodata = EconodataClient(settings.econodata_api_key)
-        leads = await asyncio.to_thread(repository().list, True)
-        pending = [
-            lead for lead in leads
-            if not lead.cnpj and (lead.phone or (lead.site_platform == "Instagram" and lead.current_site))
-        ]
-        job.total = len(pending)
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            for index, lead in enumerate(pending, 1):
-                job.detail = f"Consultando {index}/{job.total} na Econodata"
-                cnpj = await econodata.find_cnpj(client, lead)
-                if cnpj:
-                    lead.cnpj = cnpj
-                    lead.cnpj_captured = True
-                    captured += 1
-                    await asyncio.to_thread(repository().update_enrichment, [lead])
-                job.processed = index
-                if index < job.total:
-                    job.detail = (
-                        f"{index}/{job.total} analisado(s) · {captured} CNPJ(s) capturado(s) · "
-                        f"respeitando o limite da Econodata"
-                    )
-                    await asyncio.sleep(1.1)
-        job.status = "completed"
-        job.detail = f"{job.total} lead(s) analisado(s) · {captured} CNPJ(s) capturado(s)"
-    except EconodataInsufficientTokens:
-        job.status = "failed"
-        job.detail = (
-            f"Consulta interrompida por falta de tokens na Econodata · "
-            f"{job.processed} lead(s) analisado(s) · "
-            f"{captured} CNPJ(s) salvo(s) antes da interrupção"
-        )
-    except Exception as exc:
-        job.status = "failed"
-        job.detail = f"{captured} CNPJ(s) salvo(s) antes do erro · {exc}"
-
-
-@app.post("/api/cnpj/backfill", status_code=202)
-async def start_cnpj_backfill(background_tasks: BackgroundTasks):
-    settings = get_settings()
-    if not settings.econodata_api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Configure ECONODATA_API_KEY no Render.",
-        )
-    if any(job.kind == "cnpj_backfill" and job.status in {"queued", "running"} for job in jobs.values()):
-        raise HTTPException(status_code=409, detail="A busca de CNPJs já está em andamento.")
-    job_id = str(uuid4())
-    jobs[job_id] = Job(id=job_id, kind="cnpj_backfill", status="queued")
-    background_tasks.add_task(run_cnpj_backfill, job_id)
-    return jobs[job_id]
 
 
 @app.post("/api/search", status_code=202)
