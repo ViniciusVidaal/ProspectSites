@@ -6,7 +6,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .econodata import EconodataClient
+from .econodata import EconodataClient, EconodataInsufficientTokens
 from .models import ArchiveRequest, Job, SearchRequest
 from .places import search_eligible_profiles
 from .sheets import SheetsRepository
@@ -164,6 +164,7 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
 
 async def run_cnpj_backfill(job_id: str) -> None:
     job = jobs[job_id]
+    captured = 0
     try:
         job.status = "running"
         job.detail = "Carregando leads ativos e arquivados"
@@ -175,7 +176,6 @@ async def run_cnpj_backfill(job_id: str) -> None:
             if not lead.cnpj and (lead.phone or (lead.site_platform == "Instagram" and lead.current_site))
         ]
         job.total = len(pending)
-        captured = 0
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             for index, lead in enumerate(pending, 1):
                 job.detail = f"Consultando {index}/{job.total} na Econodata"
@@ -188,9 +188,16 @@ async def run_cnpj_backfill(job_id: str) -> None:
                 job.processed = index
         job.status = "completed"
         job.detail = f"{job.total} lead(s) analisado(s) · {captured} CNPJ(s) capturado(s)"
+    except EconodataInsufficientTokens:
+        job.status = "failed"
+        job.detail = (
+            f"Consulta interrompida por falta de tokens na Econodata · "
+            f"{job.processed} lead(s) analisado(s) · "
+            f"{captured} CNPJ(s) salvo(s) antes da interrupção"
+        )
     except Exception as exc:
         job.status = "failed"
-        job.detail = str(exc)
+        job.detail = f"{captured} CNPJ(s) salvo(s) antes do erro · {exc}"
 
 
 @app.post("/api/cnpj/backfill", status_code=202)

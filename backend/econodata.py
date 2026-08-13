@@ -5,6 +5,10 @@ import httpx
 from .models import Lead
 
 
+class EconodataInsufficientTokens(RuntimeError):
+    pass
+
+
 def normalize_cnpj(value: str) -> str:
     return re.sub(r"\D", "", str(value or ""))
 
@@ -54,6 +58,6 @@ class EconodataClient:
         if response.status_code in {401, 403}:
             raise RuntimeError("A Econodata recusou a chave de acesso.")
         if response.status_code == 402:
-            raise RuntimeError("A conta Econodata não possui tokens suficientes.")
+            raise EconodataInsufficientTokens("A conta Econodata não possui tokens suficientes.")
         response.raise_for_status()
         return extract_matched_cnpj(response.json())

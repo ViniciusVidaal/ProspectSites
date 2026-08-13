@@ -139,7 +139,7 @@ function App() {
       try {
         const current = await api(`/api/jobs/${job.id}`);
         setJob(current);
-        if (current.status === "completed") loadLeads();
+        if (["completed", "failed"].includes(current.status)) loadLeads();
       } catch (error) {
         setNotice(error.message);
         setJob((current) => current ? { ...current, status: "failed", detail: error.message } : current);
