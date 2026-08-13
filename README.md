@@ -14,7 +14,7 @@ Uma empresa é salva quando:
   plataforma semelhante.
 
 A busca usa diretamente a Google Places API (New), sem scraping de anúncios,
-navegador automatizado, CAPTCHA ou SerpApi. Até três páginas de 20 perfis são
+navegador automatizado ou serviços de pesquisa paralelos. Até três páginas de 20 perfis são
 consultadas por pesquisa.
 
 ## Contato
@@ -61,12 +61,21 @@ O frontend usa:
 ```text
 VITE_API_URL=https://seu-backend.onrender.com
 ```
-# CNPJ gratuito pelo Google Colab
+# Consulta de CNPJ pela Econodata
 
-O painel possui o botão **Processar CNPJs no Colab**. Ele abre o notebook
-`colab/ProspectSites_CNPJ_Receita.ipynb`, que usa os Dados Abertos de CNPJ da
-Receita Federal e grava correspondências fortes na coluna `CNPJ` da planilha.
+O botão **Processar CNPJs** envia o nome de cada empresa sem CNPJ ao endpoint
+da Econodata e salva somente o número do CNPJ retornado. A chave permanece no
+backend do Render e nunca é enviada ao navegador.
 
-O processamento não exige SerpApi. Os ZIPs grandes são processados um por vez
-no armazenamento temporário do Colab; o Google Drive recebe apenas o banco
-regional reduzido e o CSV de sugestões ambíguas para revisão.
+Configure no Render:
+
+```text
+ECONODATA_API_URL=https://endpoint-fornecido-pela-econodata
+ECONODATA_API_KEY=sua-chave
+ECONODATA_AUTH_HEADER=Authorization
+ECONODATA_AUTH_SCHEME=Bearer
+ECONODATA_QUERY_PARAM=nome
+```
+
+Os três últimos valores devem ser ajustados caso o exemplo de requisição
+fornecido pela Econodata utilize outro cabeçalho, esquema ou nome de parâmetro.

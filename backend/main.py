@@ -1,16 +1,14 @@
 import asyncio
-from pathlib import Path
 from uuid import uuid4
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
 from .config import get_settings
-from .cnpj import enrich_leads_with_cnpj
+from .econodata import EconodataClient
 from .models import ArchiveRequest, Job, SearchRequest
-from .places import hydrate_lead_location, search_eligible_profiles
+from .places import search_eligible_profiles
 from .sheets import SheetsRepository
 
 app = FastAPI(title="Prospect Sites API", version="2.0.0")
@@ -58,28 +56,10 @@ def health():
                 )
             ),
             "search": "google_places",
-            "cnpj_search": "serpapi" if settings.serpapi_api_key else "duckduckgo",
+            "cnpj_search": "econodata" if settings.econodata_api_key else "configuration_required",
         }
     except RuntimeError as exc:
         return {"status": "configuration_required", "detail": str(exc)}
-
-
-@app.get("/colab/receita_cnpj.py", include_in_schema=False)
-def colab_helper():
-    return FileResponse(
-        Path("colab/receita_cnpj.py"),
-        media_type="text/x-python",
-        filename="receita_cnpj.py",
-    )
-
-
-@app.get("/colab/ProspectSites_CNPJ_Receita.ipynb", include_in_schema=False)
-def colab_notebook():
-    return FileResponse(
-        Path("colab/ProspectSites_CNPJ_Receita.ipynb"),
-        media_type="application/x-ipynb+json",
-        filename="ProspectSites_CNPJ_Receita.ipynb",
-    )
 
 
 @app.get("/api/leads")
@@ -173,7 +153,7 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
             f"{report.scanned} perfil(is) analisado(s) · "
             f"{len(report.eligible)} qualificado(s) · "
             f"{duplicates} duplicado(s) · "
-            f"CNPJ pendente para processamento gratuito no Colab · "
+            f"CNPJ pendente para consulta na Econodata · "
             f"{report.pages} página(s) consultada(s) · "
             f"mais de {request.minimum_reviews} avaliações"
         )
@@ -188,6 +168,13 @@ async def run_cnpj_backfill(job_id: str) -> None:
         job.status = "running"
         job.detail = "Carregando leads ativos e arquivados"
         settings = get_settings()
+        econodata = EconodataClient(
+            settings.econodata_api_url,
+            settings.econodata_api_key,
+            settings.econodata_auth_header,
+            settings.econodata_auth_scheme,
+            settings.econodata_query_param,
+        )
         leads = await asyncio.to_thread(repository().list, True)
         pending = [
             lead for lead in leads
@@ -195,39 +182,16 @@ async def run_cnpj_backfill(job_id: str) -> None:
         ]
         job.total = len(pending)
         captured = 0
-        async with httpx.AsyncClient(timeout=8) as places_client:
-            for start in range(0, len(pending), 5):
-                batch = pending[start:start + 5]
-                job.detail = f"Localizando empresas {start + 1}-{min(start + len(batch), job.total)} de {job.total}"
-                location_semaphore = asyncio.Semaphore(1)
-
-                async def locate(lead):
-                    try:
-                        async with location_semaphore:
-                            await asyncio.sleep(1.1)
-                            return await hydrate_lead_location(places_client, settings.places_api_key, lead)
-                    except httpx.HTTPError:
-                        return lead
-
-                located = await asyncio.gather(*(locate(lead) for lead in batch))
-                await asyncio.to_thread(repository().update_enrichment, located)
-                ready = [lead for lead in located if lead.city and lead.state]
-                if not ready:
-                    job.processed = min(start + len(batch), job.total)
-                    job.detail = f"{job.processed}/{job.total} analisado(s) · aguardando localização dos demais"
-                    continue
-                job.detail = f"Buscando CNPJs {start + 1}-{min(start + len(batch), job.total)} de {job.total}"
-                found = await enrich_leads_with_cnpj(
-                    ready,
-                    concurrency=2,
-                    delay_range=(1.5, 3.0) if settings.serpapi_api_key else (3.0, 6.0),
-                    max_queries=1,
-                    serpapi_api_key=settings.serpapi_api_key,
-                )
-                captured += found
-                await asyncio.to_thread(repository().update_enrichment, ready)
-                job.processed = min(start + len(batch), job.total)
-                job.detail = f"{job.processed}/{job.total} analisado(s) · {captured} CNPJ(s) capturado(s)"
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            for index, lead in enumerate(pending, 1):
+                job.detail = f"Consultando {index}/{job.total} na Econodata"
+                cnpj = await econodata.find_cnpj(client, lead)
+                if cnpj:
+                    lead.cnpj = cnpj
+                    lead.cnpj_captured = True
+                    captured += 1
+                    await asyncio.to_thread(repository().update_enrichment, [lead])
+                job.processed = index
         job.status = "completed"
         job.detail = f"{job.total} lead(s) analisado(s) · {captured} CNPJ(s) capturado(s)"
     except Exception as exc:
@@ -237,10 +201,11 @@ async def run_cnpj_backfill(job_id: str) -> None:
 
 @app.post("/api/cnpj/backfill", status_code=202)
 async def start_cnpj_backfill(background_tasks: BackgroundTasks):
-    if not get_settings().serpapi_api_key:
+    settings = get_settings()
+    if not settings.econodata_api_url or not settings.econodata_api_key:
         raise HTTPException(
             status_code=503,
-            detail="Configure SERPAPI_API_KEY no Render para buscar CNPJs sem bloqueio do DuckDuckGo.",
+            detail="Configure ECONODATA_API_URL e ECONODATA_API_KEY no Render.",
         )
     if any(job.kind == "cnpj_backfill" and job.status in {"queued", "running"} for job in jobs.values()):
         raise HTTPException(status_code=409, detail="A busca de CNPJs já está em andamento.")

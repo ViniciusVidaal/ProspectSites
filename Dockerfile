@@ -12,7 +12,6 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt
 
 COPY backend ./backend
-COPY colab ./colab
 
 EXPOSE 10000
 

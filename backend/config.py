@@ -15,7 +15,11 @@ class Settings(BaseModel):
     service_account_info: dict | None = None
     sheet_name: str
     frontend_origins: list[str]
-    serpapi_api_key: str = ""
+    econodata_api_url: str = ""
+    econodata_api_key: str = ""
+    econodata_auth_header: str = "Authorization"
+    econodata_auth_scheme: str = "Bearer"
+    econodata_query_param: str = "nome"
 
 
 @lru_cache
@@ -64,5 +68,9 @@ def get_settings() -> Settings:
             ).split(",")
             if item.strip()
         ],
-        serpapi_api_key=os.getenv("SERPAPI_API_KEY", ""),
+        econodata_api_url=os.getenv("ECONODATA_API_URL", "").strip(),
+        econodata_api_key=os.getenv("ECONODATA_API_KEY", "").strip(),
+        econodata_auth_header=os.getenv("ECONODATA_AUTH_HEADER", "Authorization").strip(),
+        econodata_auth_scheme=os.getenv("ECONODATA_AUTH_SCHEME", "Bearer").strip(),
+        econodata_query_param=os.getenv("ECONODATA_QUERY_PARAM", "nome").strip(),
     )
