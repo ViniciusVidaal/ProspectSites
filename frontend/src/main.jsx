@@ -182,7 +182,14 @@ function App() {
   };
 
   const openCnpjColab = () => {
-    window.open("https://colab.research.google.com/github/ViniciusVidaal/ProspectSites/blob/main/colab/ProspectSites_CNPJ_Receita.ipynb", "_blank", "noopener,noreferrer");
+    const download = document.createElement("a");
+    download.href = `${API}/colab/ProspectSites_CNPJ_Receita.ipynb`;
+    download.download = "ProspectSites_CNPJ_Receita.ipynb";
+    document.body.appendChild(download);
+    download.click();
+    download.remove();
+    window.open("https://colab.research.google.com/", "_blank", "noopener,noreferrer");
+    setNotice("Notebook baixado. No Colab, clique em Arquivo > Fazer upload de notebook e selecione ProspectSites_CNPJ_Receita.ipynb.");
   };
 
   const whatsappHref = (lead) => {
@@ -410,7 +417,7 @@ function App() {
         <div className="leads-panel">
           <div className="panel-head">
             <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Contatos qualificados para abordagem individual.</p></div></div>
-            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={openCnpjColab} title="Abrir processamento gratuito pela base da Receita Federal"><Search size={14}/>Processar CNPJs no Colab</button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
+            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={openCnpjColab} title="Baixar o notebook e abrir o Google Colab"><Search size={14}/>Baixar Colab de CNPJs</button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
           </div>
           <div className="table-wrap">
             <table><thead><tr><th>Posição</th><th>Empresa</th><th>CNPJ</th><th>Avaliações</th><th>Site atual</th><th>Contato</th><th>Status</th><th>Ações</th></tr></thead>

@@ -73,6 +73,15 @@ def colab_helper():
     )
 
 
+@app.get("/colab/ProspectSites_CNPJ_Receita.ipynb", include_in_schema=False)
+def colab_notebook():
+    return FileResponse(
+        Path("colab/ProspectSites_CNPJ_Receita.ipynb"),
+        media_type="application/x-ipynb+json",
+        filename="ProspectSites_CNPJ_Receita.ipynb",
+    )
+
+
 @app.get("/api/leads")
 def list_leads(include_archived: bool = True):
     try:
