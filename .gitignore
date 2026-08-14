@@ -5,3 +5,5 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 google-service-account.json
+agent/econodata-profile/
+agent/econodata-page-map.json
