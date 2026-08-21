@@ -187,7 +187,7 @@ class SheetsRepository:
         ).execute()
         return fresh
 
-    def mark_sent(self, place_id: str) -> Lead:
+    def mark_sent(self, place_id: str) -> dict[str, str | bool]:
         self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
@@ -211,13 +211,6 @@ class SheetsRepository:
         if row_number is None:
             raise KeyError("Lead não encontrado na planilha.")
 
-        lead = next(
-            (item for item in self.list() if item.place_id == place_id),
-            None,
-        )
-        if not lead:
-            raise KeyError("Lead não encontrado.")
-
         sent_at = datetime.now(
             ZoneInfo("America/Sao_Paulo")
         ).strftime("%d/%m/%Y %H:%M")
@@ -227,7 +220,7 @@ class SheetsRepository:
             valueInputOption="RAW",
             body={"values": [["Sim", sent_at]]},
         ).execute()
-        return lead.model_copy(update={"sent": True, "sent_at": sent_at})
+        return {"place_id": place_id, "sent": True, "sent_at": sent_at}
 
     def archive(self, place_id: str) -> None:
         self.ensure_sheet()

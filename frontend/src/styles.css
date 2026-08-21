@@ -91,7 +91,7 @@ select:disabled { opacity: .55; cursor: not-allowed; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; }
+.workspace { display: block; }
 .leads-panel { min-width: 0; overflow: hidden; }
 .panel-head { padding: 20px 22px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .filters { display: flex; padding: 4px; background: var(--soft); border: 1px solid var(--line); border-radius: 9px; }
@@ -100,6 +100,9 @@ select:disabled { opacity: .55; cursor: not-allowed; }
 .archive-today { height: 42px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--muted); font-size: 11px; font-weight: 700; }
 .archive-today:hover { border-color: var(--accent); color: var(--accent-strong); }
 .archive-today:disabled { opacity: .45; cursor: not-allowed; }
+.message-settings { width: 42px; height: 42px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-text); }
+.message-settings span { display: none; }
+.message-settings:hover { filter: brightness(.96); transform: translateY(-1px); }
 .table-wrap { overflow: auto; }
 table { width: 100%; min-width: 1240px; border-collapse: collapse; }
 .cnpj-badge { display: inline-flex; align-items: center; gap: 5px; width: max-content; padding: 6px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
@@ -142,9 +145,12 @@ html[data-theme="dark"] .whatsapp-action.sent { background: #253329; color: #88d
 .empty strong { color: var(--text); }
 .empty span { font-size: 11px; }
 
-aside { align-self: start; position: sticky; top: 16px; padding: 22px; }
+.message-modal-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 18px; background: rgba(3, 8, 14, .68); backdrop-filter: blur(5px); }
+.message-modal { position: relative; width: min(680px, 100%); max-height: calc(100vh - 36px); overflow-y: auto; padding: 25px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: 0 28px 90px rgba(0,0,0,.34); }
+.modal-close { position: absolute; top: 18px; right: 18px; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); color: var(--muted); }
+.modal-close:hover { color: var(--danger); border-color: var(--danger); }
 .message-label { display: block; margin-top: 22px; }
-textarea { width: 100%; height: 320px; padding: 13px; border: 1px solid var(--input-line); border-radius: 11px; outline: 0; resize: vertical; background: var(--soft); color: var(--text); line-height: 1.55; }
+textarea { width: 100%; min-height: 260px; max-height: 50vh; padding: 13px; border: 1px solid var(--input-line); border-radius: 11px; outline: 0; resize: vertical; background: var(--soft); color: var(--text); line-height: 1.55; }
 textarea:focus { border-color: var(--accent); }
 .template-tip { display: block; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.45; }
 .template-tip b { color: var(--accent-strong); }
@@ -180,8 +186,7 @@ textarea:focus { border-color: var(--accent); }
 @media (max-width: 1180px) {
   .cascade-grid { grid-template-columns: 1fr 1fr; }
   .cascade-grid .primary { width: 100%; }
-  .workspace { grid-template-columns: 1fr; }
-  aside { position: static; }
+  .message-modal { width: min(620px, 100%); }
 }
 
 @media (max-width: 700px) {

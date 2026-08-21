@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
   Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
-  Search, Star, Sun, Trash2, Users
+  Search, Star, Sun, Trash2, Users, X
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
 import "./styles.css";
@@ -86,6 +86,7 @@ function App() {
   const [dispatch, setDispatch] = useState(null);
   const [clock, setClock] = useState(Date.now());
   const [leadActions, setLeadActions] = useState({});
+  const [messageOpen, setMessageOpen] = useState(false);
   const dispatchWindowRef = useRef(null);
 
   const loadLeads = async ({ silent = false, retries = 5 } = {}) => {
@@ -151,6 +152,7 @@ function App() {
   const today = new Intl.DateTimeFormat("pt-BR").format(new Date());
   const visible = useMemo(
     () => leads
+      .filter((lead) => !lead.archived)
       .filter((lead) => dateFilter === "all" || lead.date === today)
       .sort((a, b) =>
         Number(a.sent) - Number(b.sent)
@@ -222,8 +224,8 @@ function App() {
       sent_today: Number(current.sent_today || 0) + 1,
     }));
     try {
-      const updated = await api(`/api/leads/${encodeURIComponent(placeId)}/sent`, { method: "POST" });
-      setLeads((items) => items.map((lead) => lead.place_id === placeId ? updated : lead));
+      const updated = await api(`/api/leads/${encodeURIComponent(placeId)}/sent`, { method: "POST", keepalive: true });
+      setLeads((items) => items.map((lead) => lead.place_id === placeId ? { ...lead, ...updated } : lead));
     } catch (error) {
       setLeads((items) => items.map((lead) =>
         lead.place_id === placeId ? original : lead
@@ -244,18 +246,20 @@ function App() {
   };
 
   const deleteLead = async (lead) => {
-    if (!window.confirm(`Arquivar ${lead.company_name}? Ele sairá do painel, mas continuará salvo no histórico.`)) return;
+    if (!window.confirm(`Excluir ${lead.company_name} do painel? O histórico continuará protegido para evitar leads repetidos.`)) return;
     if (leadActions[lead.place_id]) return;
     setLeadActions((current) => ({ ...current, [lead.place_id]: "archiving" }));
     try {
       await api(`/api/leads/${encodeURIComponent(lead.place_id)}`, { method: "DELETE" });
-      setLeads((items) => items.filter((item) => item.place_id !== lead.place_id));
+      setLeads((items) => items.map((item) =>
+        item.place_id === lead.place_id ? { ...item, archived: true } : item
+      ));
       setStats((current) => ({
         ...current,
         archived: Number(current.archived || 0) + 1,
       }));
     } catch (error) {
-      setNotice(`Não foi possível arquivar o lead: ${error.message}`);
+      setNotice(`Não foi possível excluir o lead do painel: ${error.message}`);
     } finally {
       setLeadActions((current) => {
         const next = { ...current };
@@ -417,7 +421,7 @@ function App() {
         <div className="leads-panel">
           <div className="panel-head">
             <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Contatos qualificados para abordagem individual.</p></div></div>
-            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
+            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="message-settings" onClick={() => setMessageOpen(true)} title="Editar mensagem e configurar sessão"><MessageCircle size={18}/><span>Mensagem</span></button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
           </div>
           <div className="table-wrap">
             <table><thead><tr><th>Posição</th><th>Empresa</th><th>CNPJ</th><th>Avaliações</th><th>Site atual</th><th>Contato Google</th><th>Contato CNPJ</th><th>Status</th><th>Ações</th></tr></thead>
@@ -430,14 +434,18 @@ function App() {
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>
                 <td>{lead.cnpj_phone ? <div className="cnpj-contact"><span>{lead.cnpj_phone}</span><a className={`cnpj-action ${lead.sent ? "sent" : ""}`} href={cnpjWhatsappHref(lead)} onClick={() => markSent(lead.place_id)}><MessageCircle size={14}/>Abrir CNPJ</a></div> : <span className="muted">Não encontrado</span>}</td>
                 <td>{lead.sent ? <span className="sent-badge"><Check size={12}/>Enviado</span> : <span className="pending-badge">Pendente</span>}{lead.sent_at && <small>{lead.sent_at}</small>}</td>
-                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Arquivar lead">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Excluir do painel">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
               </tr>)}</tbody>
             </table>
             {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}
           </div>
         </div>
 
-        <aside>
+      </section>
+
+      {messageOpen && <div className="message-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setMessageOpen(false); }}>
+        <aside className="message-modal" role="dialog" aria-modal="true" aria-label="Configuração da mensagem">
+          <button className="modal-close" onClick={() => setMessageOpen(false)} title="Fechar"><X size={19}/></button>
           <div className="panel-title"><span><MessageCircle size={19}/></span><div><h2>Mensagem</h2><p>Texto preenchido no WhatsApp.</p></div></div>
           <div className="send-mode"><button className={sendMode === "manual" ? "active" : ""} onClick={() => setSendMode("manual")}>Manual</button><button className={sendMode === "assisted" ? "active" : ""} onClick={() => setSendMode("assisted")}>Sessão assistida</button></div>
           <label className="message-label"><span>Mensagem de abordagem</span><textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength="3000"/><small className="template-tip">Salva automaticamente. Variáveis: <b>[Empresa]</b>, <b>[AVALIAÇÕES]</b> e <b>[NOTA]</b>.</small></label>
@@ -466,7 +474,7 @@ function App() {
             <div className="manual-note"><Clock size={16}/><p>Inicie uma vez e permaneça no WhatsApp Desktop. Ao terminar cada intervalo, o aplicativo receberá o próximo contato com a mensagem preenchida.</p></div>
           </div>}
         </aside>
-      </section>
+      </div>}
     </main>
   );
 }
