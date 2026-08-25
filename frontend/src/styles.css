@@ -125,6 +125,9 @@ td small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px;
 html[data-theme="dark"] .platform-tag.no-site { background: #2a2735; color: #c6b8ff; }
 .muted, .no-whatsapp { color: var(--muted); font-size: 10px; }
 .sent-badge, .pending-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 999px; font-size: 9px; font-weight: 700; }
+.status-toggle { border: 0; cursor: pointer; font-family: inherit; }
+.status-toggle:hover { filter: brightness(.94); transform: translateY(-1px); }
+.status-toggle:disabled { cursor: wait; opacity: .65; }
 .sent-badge { background: #e3f6e9; color: #237942; }
 .pending-badge { background: #fff6dc; color: #8f6b08; }
 html[data-theme="dark"] .sent-badge { background: #1d3928; color: #7be3a1; }
@@ -154,6 +157,10 @@ textarea { width: 100%; min-height: 260px; max-height: 50vh; padding: 13px; bord
 textarea:focus { border-color: var(--accent); }
 .template-tip { display: block; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.45; }
 .template-tip b { color: var(--accent-strong); }
+.message-save-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.message-save-row span { color: var(--muted); font-size: 10px; }
+.message-save-row button { min-height: 42px; padding: 0 16px; border: 0; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--accent); color: var(--accent-text); font-weight: 800; }
+.message-save-row button:disabled { opacity: .45; cursor: not-allowed; }
 .send-mode { display: flex; gap: 4px; margin-top: 20px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
 .send-mode button { flex: 1; height: 35px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 700; }
 .send-mode button.active { background: var(--panel); color: var(--text); box-shadow: 0 2px 10px rgba(20, 40, 28, .08); }
@@ -198,6 +205,8 @@ textarea:focus { border-color: var(--accent); }
   .metrics-row article { flex: 1 1 145px; min-width: 0; padding: 13px; }
   .metrics-row strong { font-size: 20px; }
   .search-card { padding: 18px; }
+  .message-save-row { align-items: stretch; flex-direction: column; }
+  .message-save-row button { width: 100%; }
   .mode-tabs { width: 100%; }
   .mode-tabs button { flex: 1; }
   .free-search, .cascade-grid { grid-template-columns: 1fr; }

@@ -188,6 +188,9 @@ class SheetsRepository:
         return fresh
 
     def mark_sent(self, place_id: str) -> dict[str, str | bool]:
+        return self.set_sent_status(place_id, True)
+
+    def set_sent_status(self, place_id: str, sent: bool) -> dict[str, str | bool]:
         self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
@@ -211,16 +214,17 @@ class SheetsRepository:
         if row_number is None:
             raise KeyError("Lead não encontrado na planilha.")
 
-        sent_at = datetime.now(
-            ZoneInfo("America/Sao_Paulo")
-        ).strftime("%d/%m/%Y %H:%M")
+        sent_at = (
+            datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
+            if sent else ""
+        )
         self.service.spreadsheets().values().update(
             spreadsheetId=self.spreadsheet_id,
             range=f"'{self.sheet_name}'!K{row_number}:L{row_number}",
             valueInputOption="RAW",
-            body={"values": [["Sim", sent_at]]},
+            body={"values": [["Sim" if sent else "Não", sent_at]]},
         ).execute()
-        return {"place_id": place_id, "sent": True, "sent_at": sent_at}
+        return {"place_id": place_id, "sent": sent, "sent_at": sent_at}
 
     def archive(self, place_id: str) -> None:
         self.ensure_sheet()

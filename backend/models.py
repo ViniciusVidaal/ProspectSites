@@ -56,6 +56,10 @@ class ArchiveRequest(BaseModel):
     place_ids: list[str] = Field(min_length=1, max_length=500)
 
 
+class SentStatusRequest(BaseModel):
+    sent: bool
+
+
 class Job(BaseModel):
     id: str
     kind: str

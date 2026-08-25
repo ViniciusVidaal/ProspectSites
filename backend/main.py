@@ -5,7 +5,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .models import ArchiveRequest, Job, SearchRequest
+from .models import ArchiveRequest, Job, SearchRequest, SentStatusRequest
 from .places import search_eligible_profiles
 from .sheets import SheetsRepository
 
@@ -87,6 +87,18 @@ def lead_stats():
 def mark_lead_sent(place_id: str):
     try:
         return repository().mark_sent(place_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Falha ao atualizar Google Sheets: {exc}"
+        ) from exc
+
+
+@app.post("/api/leads/{place_id}/sent-status")
+def set_lead_sent_status(place_id: str, request: SentStatusRequest):
+    try:
+        return repository().set_sent_status(place_id, request.sent)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
