@@ -11,6 +11,7 @@ load_dotenv()
 class Settings(BaseModel):
     places_api_key: str
     firebase_service_account_info: dict
+    settings_admin_password: str | None = None
     spreadsheet_id: str | None = None
     service_account_file: Path | None = None
     service_account_info: dict | None = None
@@ -57,6 +58,7 @@ def get_settings() -> Settings:
     return Settings(
         places_api_key=required["GOOGLE_PLACES_API_KEY"],
         firebase_service_account_info=firebase_service_account_info,
+        settings_admin_password=os.getenv("SETTINGS_ADMIN_PASSWORD"),
         spreadsheet_id=os.getenv("GOOGLE_SPREADSHEET_ID"),
         service_account_file=service_file,
         service_account_info=service_info,

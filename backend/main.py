@@ -1,13 +1,14 @@
 import asyncio
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .models import ArchiveRequest, Job, SearchRequest, SentStatusRequest
+from .models import ApiKeyCreateRequest, ArchiveRequest, Job, SearchRequest, SentStatusRequest
+from .api_key_repository import ApiKeyRepository
 from .firestore_repository import FirestoreRepository
-from .places import search_eligible_profiles
+from .places import PlacesQuotaExceeded, PlacesRequestFailed, search_eligible_profiles
 from .sheets import SheetsRepository
 
 app = FastAPI(title="Prospect Sites API", version="2.0.0")
@@ -28,6 +29,20 @@ except RuntimeError:
 
 def repository() -> FirestoreRepository:
     return FirestoreRepository(get_settings())
+
+
+def api_keys() -> ApiKeyRepository:
+    settings = get_settings()
+    repository()
+    return ApiKeyRepository(settings)
+
+
+def require_settings_password(x_settings_password: str | None = Header(default=None)) -> None:
+    expected = get_settings().settings_admin_password
+    if not expected:
+        raise HTTPException(status_code=503, detail="A área de configurações ainda não foi protegida. Configure SETTINGS_ADMIN_PASSWORD no Render.")
+    if x_settings_password != expected:
+        raise HTTPException(status_code=401, detail="Senha de configurações incorreta.")
 
 
 def migrate_legacy_sheet_if_needed() -> int:
@@ -119,6 +134,35 @@ def list_lead_history(
         ) from exc
 
 
+@app.get("/api/settings/api-keys")
+def list_api_keys():
+    try:
+        return api_keys().list_public()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Não foi possível carregar as configurações de API agora.")
+
+
+@app.post("/api/settings/api-keys", dependencies=[Depends(require_settings_password)])
+def add_api_key(request: ApiKeyCreateRequest):
+    try:
+        return api_keys().add(request.name, request.api_key, request.make_active)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        raise HTTPException(status_code=503, detail="Não foi possível salvar a API. Tente novamente.")
+
+
+@app.post("/api/settings/api-keys/{key_id}/activate", dependencies=[Depends(require_settings_password)])
+def activate_api_key(key_id: str):
+    try:
+        api_keys().activate(key_id)
+        return {"status": "active", "id": key_id}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        raise HTTPException(status_code=503, detail="Não foi possível ativar esta API. Tente novamente.")
+
+
 @app.post("/api/leads/{place_id}/sent")
 def mark_lead_sent(place_id: str):
     try:
@@ -179,9 +223,9 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
     try:
         job.status = "running"
         job.detail = "Consultando perfis no Google"
-        settings = get_settings()
+        key_value, key_id = api_keys().active()
         report = await search_eligible_profiles(
-            settings.places_api_key,
+            key_value,
             request.query,
             minimum_reviews=request.minimum_reviews,
             max_pages=3,
@@ -201,9 +245,19 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
             f"{report.pages} página(s) consultada(s) · "
             f"mais de {request.minimum_reviews} avaliações"
         )
-    except Exception as exc:
+    except PlacesQuotaExceeded as exc:
+        api_keys().mark_exhausted(key_id, str(exc))
+        job.status = "failed"
+        job.detail = "Esta API do Google Maps atingiu o limite de uso. Abra Configurações, escolha outra API autorizada e tente novamente."
+    except PlacesRequestFailed as exc:
         job.status = "failed"
         job.detail = str(exc)
+    except RuntimeError as exc:
+        job.status = "failed"
+        job.detail = str(exc) if "Nenhuma API cadastrada" in str(exc) else "Não foi possível concluir a pesquisa agora. Confira sua conexão e tente novamente."
+    except Exception:
+        job.status = "failed"
+        job.detail = "Não foi possível concluir a pesquisa agora. Confira sua conexão e tente novamente."
 
 
 @app.on_event("startup")

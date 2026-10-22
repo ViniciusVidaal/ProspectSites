@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
   Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
-  Search, Star, Sun, Trash2, Users, X, ListFilter
+  Search, Star, Sun, Trash2, Users, X, ListFilter, Settings, KeyRound, AlertTriangle
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
 import "./styles.css";
@@ -95,6 +95,11 @@ function App() {
   const [historyStartDate, setHistoryStartDate] = useState("");
   const [historyEndDate, setHistoryEndDate] = useState("");
   const [historyPeriod, setHistoryPeriod] = useState("15");
+  const [apiKeys, setApiKeys] = useState([]);
+  const [settingsPassword, setSettingsPassword] = useState("");
+  const [apiName, setApiName] = useState("");
+  const [apiValue, setApiValue] = useState("");
+  const [settingsLoading, setSettingsLoading] = useState(false);
   const dispatchWindowRef = useRef(null);
 
   const loadLeads = async ({ silent = false, retries = 5 } = {}) => {
@@ -166,6 +171,39 @@ function App() {
     if (activeView !== "leads" || !historyEndDate) return;
     loadHistory({ silent: true });
   }, [activeView, historyStartDate, historyEndDate]);
+
+  const loadApiKeys = async () => {
+    setSettingsLoading(true);
+    try { setApiKeys(await api("/api/settings/api-keys")); }
+    catch (error) { setNotice(error.message); }
+    finally { setSettingsLoading(false); }
+  };
+
+  useEffect(() => { if (activeView === "settings") loadApiKeys(); }, [activeView]);
+
+  const settingsRequest = async (path, options = {}) => api(path, {
+    ...options,
+    headers: { "X-Settings-Password": settingsPassword, ...(options.headers || {}) },
+  });
+
+  const saveApiKey = async (event) => {
+    event.preventDefault();
+    if (!settingsPassword) return setNotice("Informe a senha da área de configurações.");
+    setSettingsLoading(true);
+    try {
+      await settingsRequest("/api/settings/api-keys", { method: "POST", body: JSON.stringify({ name: apiName, api_key: apiValue, make_active: true }) });
+      setApiName(""); setApiValue(""); setNotice("API salva e ativada com sucesso."); await loadApiKeys();
+    } catch (error) { setNotice(error.message); }
+    finally { setSettingsLoading(false); }
+  };
+
+  const activateApiKey = async (key) => {
+    if (!settingsPassword) return setNotice("Informe a senha da área de configurações para trocar a API.");
+    setSettingsLoading(true);
+    try { await settingsRequest(`/api/settings/api-keys/${encodeURIComponent(key.id)}/activate`, { method: "POST" }); setNotice(`${key.name} está ativa agora.`); await loadApiKeys(); }
+    catch (error) { setNotice(error.message); }
+    finally { setSettingsLoading(false); }
+  };
 
   useEffect(() => {
     localStorage.setItem(LEADS_CACHE, JSON.stringify(leads));
@@ -480,7 +518,7 @@ function App() {
 
   return (
     <main>
-      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><div className="topbar-actions"><nav className="app-nav" aria-label="Navegação principal"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => setActiveView("prospecting")}>Prospectar</button><button className={activeView === "leads" ? "active" : ""} onClick={() => setActiveView("leads")}><Users size={15}/>Leads</button></nav><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></div></header>
+      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><div className="topbar-actions"><nav className="app-nav" aria-label="Navegação principal"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => setActiveView("prospecting")}>Prospectar</button><button className={activeView === "leads" ? "active" : ""} onClick={() => setActiveView("leads")}><Users size={15}/>Leads</button><button className={activeView === "settings" ? "active" : ""} onClick={() => setActiveView("settings")}><Settings size={15}/>Configurações</button></nav><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></div></header>
 
       {activeView === "prospecting" && <>
       <section className="metrics-row">
@@ -577,6 +615,11 @@ function App() {
             {!historyLoading && !historyLeads.length && <div className="empty"><Users size={31}/><strong>Nenhum lead encontrado</strong><span>Altere a busca ou o período selecionado.</span></div>}
           </div>
         </div>
+      </section>}
+
+      {activeView === "settings" && <section className="settings-page">
+        <div className="history-hero"><div className="panel-title"><span><Settings size={19}/></span><div><h1>Configurações de API</h1><p>Cadastre chaves autorizadas e escolha qual API do Google Maps será usada nas pesquisas.</p></div></div></div>
+        <div className="settings-grid"><form className="settings-card" onSubmit={saveApiKey}><div className="panel-title"><span><KeyRound size={18}/></span><div><h2>Nova API</h2><p>A chave é enviada com segurança ao backend e nunca é exibida novamente.</p></div></div><label><span>Senha das configurações</span><input type="password" value={settingsPassword} onChange={(event) => setSettingsPassword(event.target.value)} placeholder="Senha definida no Render" autoComplete="current-password" /></label><label><span>Nome para identificar a API</span><input value={apiName} onChange={(event) => setApiName(event.target.value)} placeholder="Ex: API Vinícius" required /></label><label><span>Chave da API do Google Maps</span><input type="password" value={apiValue} onChange={(event) => setApiValue(event.target.value)} placeholder="Cole a chave aqui" required autoComplete="off" /></label><button className="primary" disabled={settingsLoading}><KeyRound size={17}/>{settingsLoading ? "Salvando..." : "Salvar e usar esta API"}</button></form><div className="settings-card api-status-card"><div className="panel-title"><span><AlertTriangle size={18}/></span><div><h2>Status das APIs</h2><p>Uma chave marcada como esgotada precisa ser ativada novamente manualmente após a renovação.</p></div></div><div className="api-key-list">{apiKeys.map((key) => <article key={key.id}><div><strong>{key.name}</strong><small>{key.status === "active" ? "Em uso" : key.status === "exhausted" ? `Limite atingido · renovação estimada: ${key.renews_on || "consulte o Google Cloud"}` : "Disponível"}</small>{key.last_error && <small className="api-error">{key.last_error}</small>}</div><div>{key.status === "active" ? <span className="active-badge">Ativa</span> : <button className="activate-api" disabled={settingsLoading} onClick={() => activateApiKey(key)}>Usar esta API</button>}</div></article>)}{!settingsLoading && !apiKeys.length && <div className="empty"><KeyRound size={28}/><strong>Nenhuma API cadastrada</strong><span>Cadastre uma chave para gerenciá-la por aqui.</span></div>}</div></div></div>
       </section>}
 
       {messageOpen && <div className="message-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setMessageOpen(false); }}>

@@ -7,6 +7,26 @@ import httpx
 from .models import Lead
 from .dates import today_brazil
 
+
+class PlacesQuotaExceeded(RuntimeError):
+    pass
+
+
+class PlacesRequestFailed(RuntimeError):
+    pass
+
+
+def ensure_places_response(response: httpx.Response) -> None:
+    if response.is_success:
+        return
+    body = response.text.lower()
+    quota_terms = ("resource_exhausted", "over_query_limit", "over_daily_limit", "ratelimitexceeded", "dailylimitexceeded", "quota")
+    if response.status_code == 429 or any(term in body for term in quota_terms):
+        raise PlacesQuotaExceeded("A API do Google Maps atingiu um limite de uso.")
+    if response.status_code in (401, 403) and ("api key" in body or "key" in body):
+        raise PlacesRequestFailed("A chave da API do Google Maps foi recusada. Verifique as restrições e se a Places API está ativada.")
+    raise PlacesRequestFailed("O Google Maps não respondeu à pesquisa agora. Tente novamente em alguns instantes.")
+
 PLATFORM_HOSTS = {
     "instagram.com": "Instagram",
     "facebook.com": "Facebook",
@@ -71,7 +91,7 @@ async def hydrate_lead_location(client: httpx.AsyncClient, api_key: str, lead: L
         },
         params={"languageCode": "pt-BR", "regionCode": "BR"},
     )
-    response.raise_for_status()
+    ensure_places_response(response)
     place = response.json()
     components = place.get("addressComponents", [])
     city = next((item.get("longText", "") for item in components if set(item.get("types", [])) & {"locality", "administrative_area_level_2"}), "")
@@ -118,7 +138,7 @@ async def search_eligible_profiles(
                 headers=headers,
                 json=payload,
             )
-            response.raise_for_status()
+            ensure_places_response(response)
             data = response.json()
             report.pages += 1
 
