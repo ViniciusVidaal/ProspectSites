@@ -101,6 +101,7 @@ function App() {
   const [apiValue, setApiValue] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [deletedLeads, setDeletedLeads] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const dispatchWindowRef = useRef(null);
@@ -218,6 +219,10 @@ function App() {
   };
 
   const chooseView = (view) => { setActiveView(view); setSidebarOpen(false); };
+  const toggleSidebar = () => {
+    if (window.innerWidth <= 700) setSidebarOpen(true);
+    else setSidebarCollapsed((current) => !current);
+  };
 
   const restoreLead = async (lead) => {
     if (!window.confirm(`Restaurar ${lead.company_name} para a base de leads?`)) return;
@@ -540,9 +545,9 @@ function App() {
   }, [dispatch?.status, dispatch?.nextAt, dispatch?.index]);
 
   return (
-    <main className="app-shell">
-      <nav className={`sidebar ${sidebarOpen ? "open" : ""}`} aria-label="Navegação principal"><a className="brand" href="#" onClick={() => chooseView("prospecting")}><span><Radar size={20}/></span>Prospect Sites</a><div className="sidebar-links"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => chooseView("prospecting")}><Radar size={17}/>Prospectar</button><button className={activeView === "leads" ? "active" : ""} onClick={() => chooseView("leads")}><Users size={17}/>Leads</button><button onClick={() => { setMessageDraft(message); setMessageOpen(true); setSidebarOpen(false); }}><MessageCircle size={17}/>Mensagem</button><button className={activeView === "history" ? "active" : ""} onClick={() => chooseView("history")}><History size={17}/>Histórico</button><button className={activeView === "settings" ? "active" : ""} onClick={() => chooseView("settings")}><Settings size={17}/>Configurações</button></div></nav>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
-      <div className="app-content"><header className="topbar"><button className="menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={20}/></button><div className="mobile-brand">Prospect Sites</div><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
+    <main className={`app-shell ${sidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
+      <nav className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`} aria-label="Navegação principal"><a className="brand" href="#" onClick={() => chooseView("prospecting")}><span><Radar size={20}/></span>Prospect Sites</a><div className="sidebar-links"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => chooseView("prospecting")} title="Prospectar"><Radar size={17}/>Prospectar</button><button className={activeView === "leads" ? "active" : ""} onClick={() => chooseView("leads")} title="Leads"><Users size={17}/>Leads</button><button onClick={() => { setMessageDraft(message); setMessageOpen(true); setSidebarOpen(false); }} title="Mensagem"><MessageCircle size={17}/>Mensagem</button><button className={activeView === "history" ? "active" : ""} onClick={() => chooseView("history")} title="Histórico"><History size={17}/>Histórico</button><button className={activeView === "settings" ? "active" : ""} onClick={() => chooseView("settings")} title="Configurações"><Settings size={17}/>Configurações</button></div></nav>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
+      <div className="app-content"><header className="topbar"><button className="menu-toggle" onClick={toggleSidebar} aria-label={sidebarCollapsed ? "Abrir menu" : "Recolher menu"}><Menu size={20}/></button><div className="mobile-brand">Prospect Sites</div><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
 
       {activeView === "prospecting" && <>
       <section className="metrics-row">
