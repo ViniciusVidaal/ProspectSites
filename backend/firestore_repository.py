@@ -142,12 +142,14 @@ class FirestoreRepository:
         if not snapshot.exists:
             raise KeyError("Lead não encontrado no banco de dados.")
         lead = self._lead(snapshot)
-        firestore.client().batch().update(reference, {
+        batch = firestore.client().batch()
+        batch.update(reference, {
             "archived": True,
             "archive_reason": "manual_delete",
             "archived_at": firestore.SERVER_TIMESTAMP,
             "updated_at": firestore.SERVER_TIMESTAMP,
-        }).set(
+        })
+        batch.set(
             firestore.client().collection("lead_deletion_history").document(place_id),
             {
                 "place_id": place_id,
@@ -157,22 +159,26 @@ class FirestoreRepository:
                 "deleted_at": firestore.SERVER_TIMESTAMP,
                 "restored_at": None,
             },
-        ).commit()
+        )
+        batch.commit()
 
     def restore(self, place_id: str) -> None:
         reference = self.collection.document(place_id)
         if not reference.get().exists:
             raise KeyError("Lead não encontrado no banco de dados.")
-        firestore.client().batch().update(reference, {
+        batch = firestore.client().batch()
+        batch.update(reference, {
             "archived": False,
             "archive_reason": "",
             "archived_at": None,
             "updated_at": firestore.SERVER_TIMESTAMP,
-        }).set(
+        })
+        batch.set(
             firestore.client().collection("lead_deletion_history").document(place_id),
             {"restored_at": firestore.SERVER_TIMESTAMP},
             merge=True,
-        ).commit()
+        )
+        batch.commit()
 
     def deletion_history(self) -> list[dict]:
         items = []
