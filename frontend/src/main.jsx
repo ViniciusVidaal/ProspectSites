@@ -103,6 +103,7 @@ function App() {
   const [apiName, setApiName] = useState("");
   const [apiValue, setApiValue] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [deletedLeads, setDeletedLeads] = useState([]);
@@ -200,7 +201,7 @@ function App() {
   const loadApiKeys = async () => {
     setSettingsLoading(true);
     try { setApiKeys(await api("/api/settings/api-keys")); }
-    catch (error) { setNotice(error.message); }
+    catch (error) { setSettingsNotice(error.message); }
     finally { setSettingsLoading(false); }
   };
 
@@ -226,16 +227,16 @@ function App() {
     setSettingsLoading(true);
     try {
       await settingsRequest("/api/settings/api-keys", { method: "POST", body: JSON.stringify({ name: apiName, api_key: apiValue, make_active: true }) });
-      setApiName(""); setApiValue(""); setNotice("API salva e ativada com sucesso."); await loadApiKeys();
-    } catch (error) { setNotice(error.message); }
+      setApiName(""); setApiValue(""); setSettingsNotice("API salva e ativada com sucesso."); await loadApiKeys();
+    } catch (error) { setSettingsNotice(error.message); }
     finally { setSettingsLoading(false); }
   };
 
   const activateApiKey = async (key) => {
     if (!settingsPassword) return setNotice("Informe a senha da área de configurações para trocar a API.");
     setSettingsLoading(true);
-    try { await settingsRequest(`/api/settings/api-keys/${encodeURIComponent(key.id)}/activate`, { method: "POST" }); setNotice(`${key.name} está ativa agora.`); await loadApiKeys(); }
-    catch (error) { setNotice(error.message); }
+    try { await settingsRequest(`/api/settings/api-keys/${encodeURIComponent(key.id)}/activate`, { method: "POST" }); setSettingsNotice(`${key.name} está ativa agora.`); await loadApiKeys(); }
+    catch (error) { setSettingsNotice(error.message); }
     finally { setSettingsLoading(false); }
   };
 
@@ -249,7 +250,6 @@ function App() {
     if (!window.confirm(`Restaurar ${lead.company_name} para a base de leads?`)) return;
     try {
       await api(`/api/leads/${encodeURIComponent(lead.place_id)}/restore`, { method: "POST" });
-      setNotice(`${lead.company_name} foi restaurado para a base.`);
       await Promise.all([loadDeletionHistory(), loadLeads({ silent: true })]);
     } catch (error) { setNotice(error.message); }
   };
@@ -359,7 +359,6 @@ function App() {
     try {
       const updated = await api(`/api/leads/${encodeURIComponent(placeId)}/sent`, { method: "POST", keepalive: true });
       setLeads((items) => items.map((lead) => lead.place_id === placeId ? { ...lead, ...updated } : lead));
-      setNotice(`${original.company_name} foi marcado como enviado.`);
     } catch (error) {
       setLeads((items) => items.map((lead) =>
         lead.place_id === placeId ? original : lead
@@ -401,7 +400,6 @@ function App() {
       setLeads((items) => items.map((item) =>
         item.place_id === lead.place_id ? { ...item, ...updated } : item
       ));
-      setNotice(sent ? `${lead.company_name} marcado como enviado.` : `${lead.company_name} voltou para pendente.`);
     } catch (error) {
       setLeads((items) => items.map((item) => item.place_id === lead.place_id ? original : item));
       setStats((current) => ({
@@ -425,7 +423,6 @@ function App() {
     setMessage(normalized);
     setMessageDraft(normalized);
     localStorage.setItem(MESSAGE_CACHE, normalized);
-    setNotice("Mensagem personalizada salva com sucesso.");
   };
 
   const deleteLead = async (lead) => {
@@ -441,7 +438,6 @@ function App() {
     }));
     try {
       await api(`/api/leads/${encodeURIComponent(lead.place_id)}`, { method: "DELETE" });
-      setNotice(`${lead.company_name} foi retirado do painel.`);
     } catch (error) {
       setLeads(previousLeads);
       setStats((current) => ({
@@ -613,7 +609,7 @@ function App() {
         <div className="leads-panel">
           <div className="panel-head">
             <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Contatos qualificados para abordagem individual.</p></div></div>
-            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="message-settings" onClick={() => { setMessageDraft(message); setMessageOpen(true); }} title="Editar mensagem e configurar sessão"><MessageCircle size={18}/><span>Mensagem</span></button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
+            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
           </div>
           <div className="table-wrap">
             <table><thead><tr><th>Posição</th><th>Empresa</th><th>CNPJ</th><th>Avaliações</th><th>Site atual</th><th>Contato Google</th><th>Contato CNPJ</th><th>Status</th><th>Ações</th></tr></thead>
@@ -670,6 +666,7 @@ function App() {
 
       {activeView === "settings" && <section className="settings-page">
         <div className="history-hero"><div className="panel-title"><span><Settings size={19}/></span><div><h1>Configurações de API</h1><p>Cadastre chaves autorizadas e escolha qual API do Google Maps será usada nas pesquisas.</p></div></div></div>
+        {settingsNotice && <div className={`settings-notice ${settingsNotice.includes("sucesso") || settingsNotice.includes("ativa agora") ? "success" : "error"}`}>{settingsNotice}</div>}
         <div className="settings-grid"><form className="settings-card" onSubmit={saveApiKey}><div className="panel-title"><span><KeyRound size={18}/></span><div><h2>Nova API</h2><p>A chave é enviada com segurança ao backend e nunca é exibida novamente.</p></div></div><label><span>Senha das configurações</span><input type="password" value={settingsPassword} onChange={(event) => setSettingsPassword(event.target.value)} placeholder="Senha definida no Render" autoComplete="current-password" /></label><label><span>Nome para identificar a API</span><input value={apiName} onChange={(event) => setApiName(event.target.value)} placeholder="Ex: API Vinícius" required /></label><label><span>Chave da API do Google Maps</span><input type="password" value={apiValue} onChange={(event) => setApiValue(event.target.value)} placeholder="Cole a chave aqui" required autoComplete="off" /></label><button className="primary" disabled={settingsLoading}><KeyRound size={17}/>{settingsLoading ? "Salvando..." : "Salvar e usar esta API"}</button></form><div className="settings-card api-status-card"><div className="panel-title"><span><AlertTriangle size={18}/></span><div><h2>Status das APIs</h2><p>Uma chave marcada como esgotada precisa ser ativada novamente manualmente após a renovação.</p></div></div><div className="api-key-list">{apiKeys.map((key) => <article key={key.id}><div><strong>{key.name}</strong><small>{key.status === "active" ? "Em uso" : key.status === "exhausted" ? `Limite atingido · renovação estimada: ${key.renews_on || "consulte o Google Cloud"}` : "Disponível"}</small>{key.last_error && <small className="api-error">{key.last_error}</small>}</div><div>{key.status === "active" ? <span className="active-badge">Ativa</span> : <button className="activate-api" disabled={settingsLoading} onClick={() => activateApiKey(key)}>Usar esta API</button>}</div></article>)}{!settingsLoading && !apiKeys.length && <div className="empty"><KeyRound size={28}/><strong>Nenhuma API cadastrada</strong><span>Cadastre uma chave para gerenciá-la por aqui.</span></div>}</div></div></div>
       </section>}
 
