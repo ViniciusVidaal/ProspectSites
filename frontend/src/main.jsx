@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
   Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
-  Search, Star, Sun, Trash2, Users, X
+  Search, Star, Sun, Trash2, Users, X, ListFilter
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
 import "./styles.css";
@@ -61,6 +61,7 @@ async function api(path, options) {
 function App() {
   const [leads, setLeads] = useState(() => readCache(LEADS_CACHE, []));
   const [mode, setMode] = useState("free");
+  const [activeView, setActiveView] = useState("prospecting");
   const [query, setQuery] = useState("");
   const [selectedNiche, setSelectedNiche] = useState("");
   const [location, setLocation] = useState("");
@@ -88,6 +89,12 @@ function App() {
   const [clock, setClock] = useState(Date.now());
   const [leadActions, setLeadActions] = useState({});
   const [messageOpen, setMessageOpen] = useState(false);
+  const [historyLeads, setHistoryLeads] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [historyStartDate, setHistoryStartDate] = useState("");
+  const [historyEndDate, setHistoryEndDate] = useState("");
+  const [historyPeriod, setHistoryPeriod] = useState("15");
   const dispatchWindowRef = useRef(null);
 
   const loadLeads = async ({ silent = false, retries = 5 } = {}) => {
@@ -117,6 +124,48 @@ function App() {
   };
 
   useEffect(() => { loadLeads({ silent: leads.length > 0 }); }, []);
+
+  const isoDate = (date) => date.toISOString().slice(0, 10);
+
+  const applyHistoryPeriod = (period) => {
+    setHistoryPeriod(period);
+    if (period === "all") {
+      setHistoryStartDate("");
+      setHistoryEndDate("");
+      return;
+    }
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - (Number(period) - 1));
+    setHistoryStartDate(isoDate(start));
+    setHistoryEndDate(isoDate(end));
+  };
+
+  const loadHistory = async ({ silent = false } = {}) => {
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (historyQuery.trim()) params.set("query", historyQuery.trim());
+      if (historyStartDate) params.set("start_date", historyStartDate);
+      if (historyEndDate) params.set("end_date", historyEndDate);
+      const items = await api(`/api/leads/history?${params.toString()}`);
+      setHistoryLeads(items);
+      if (!silent) setNotice("");
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    applyHistoryPeriod("15");
+  }, []);
+
+  useEffect(() => {
+    if (activeView !== "leads" || !historyEndDate) return;
+    loadHistory({ silent: true });
+  }, [activeView, historyStartDate, historyEndDate]);
 
   useEffect(() => {
     localStorage.setItem(LEADS_CACHE, JSON.stringify(leads));
@@ -431,8 +480,9 @@ function App() {
 
   return (
     <main>
-      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
+      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><div className="topbar-actions"><nav className="app-nav" aria-label="Navegação principal"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => setActiveView("prospecting")}>Prospectar</button><button className={activeView === "leads" ? "active" : ""} onClick={() => setActiveView("leads")}><Users size={15}/>Leads</button></nav><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></div></header>
 
+      {activeView === "prospecting" && <>
       <section className="metrics-row">
         <article><span><Users size={18}/></span><div><strong>{stats.active ?? leads.filter((lead) => !lead.archived).length}</strong><small>Leads qualificados</small></div></article>
         <article><span><MessageCircle size={18}/></span><div><strong>{stats.sent || 0}</strong><small>Mensagens enviadas</small></div></article>
@@ -496,6 +546,38 @@ function App() {
         </div>
 
       </section>
+      </>}
+
+      {activeView === "leads" && <section className="history-page">
+        <div className="history-hero">
+          <div className="panel-title"><span><Users size={19}/></span><div><h1>Base de leads</h1><p>Histórico organizado de todas as empresas salvas no banco de dados.</p></div></div>
+          <span className="history-count">{historyLeads.length} lead(s) encontrado(s)</span>
+        </div>
+        <form className="history-filters" onSubmit={(event) => { event.preventDefault(); loadHistory(); }}>
+          <label className="history-search"><span>Pesquisar empresa</span><div className="input-shell"><Search size={17}/><input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Digite o nome da empresa" /></div></label>
+          <label><span>Data inicial</span><input type="date" value={historyStartDate} onChange={(event) => { setHistoryPeriod("custom"); setHistoryStartDate(event.target.value); }} /></label>
+          <label><span>Data final</span><input type="date" value={historyEndDate} onChange={(event) => { setHistoryPeriod("custom"); setHistoryEndDate(event.target.value); }} /></label>
+          <button className="primary" type="submit" disabled={historyLoading}><ListFilter size={17}/>{historyLoading ? "Filtrando..." : "Aplicar filtros"}</button>
+        </form>
+        <div className="history-periods" aria-label="Filtros rápidos por período"><span>Período rápido:</span><button className={historyPeriod === "15" ? "active" : ""} onClick={() => applyHistoryPeriod("15")}>Últimos 15 dias</button><button className={historyPeriod === "30" ? "active" : ""} onClick={() => applyHistoryPeriod("30")}>Últimos 30 dias</button><button className={historyPeriod === "all" ? "active" : ""} onClick={() => applyHistoryPeriod("all")}>Todo o histórico</button></div>
+        <div className="leads-panel history-table-panel">
+          <div className="table-wrap">
+            <table className="history-table"><thead><tr><th>Coletado em</th><th>Empresa</th><th>Contato</th><th>Avaliações</th><th>Localização</th><th>Site atual</th><th>Mensagem</th><th>Arquivamento</th></tr></thead>
+              <tbody>{historyLeads.map((lead) => <tr key={lead.place_id} className={lead.sent ? "sent-row" : ""}>
+                <td><strong>{lead.date}</strong>{lead.sent_at && <small>Enviado: {lead.sent_at}</small>}</td>
+                <td><strong>{lead.company_name}</strong><small>{lead.cnpj_captured ? "CNPJ capturado" : "CNPJ não encontrado"}</small></td>
+                <td>{lead.phone || lead.cnpj_phone || <span className="muted">Não informado</span>}</td>
+                <td><span className="rating"><Star size={13}/>{Number(lead.rating || 0).toFixed(1)} <b>({lead.review_count})</b></span></td>
+                <td>{[lead.city, lead.state].filter(Boolean).join(" · ") || lead.address || <span className="muted">Não informado</span>}</td>
+                <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform || "Abrir site"}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
+                <td><span className={lead.sent ? "sent-badge" : "pending-badge"}>{lead.sent ? <><Check size={12}/>Enviada</> : "Pendente"}</span></td>
+                <td>{lead.archived ? <span className="archived-badge">Arquivado</span> : <span className="active-badge">Ativo</span>}</td>
+              </tr>)}</tbody>
+            </table>
+            {!historyLoading && !historyLeads.length && <div className="empty"><Users size={31}/><strong>Nenhum lead encontrado</strong><span>Altere a busca ou o período selecionado.</span></div>}
+          </div>
+        </div>
+      </section>}
 
       {messageOpen && <div className="message-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setMessageOpen(false); }}>
         <aside className="message-modal" role="dialog" aria-modal="true" aria-label="Configuração da mensagem">

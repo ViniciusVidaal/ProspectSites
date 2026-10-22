@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .models import ArchiveRequest, Job, SearchRequest, SentStatusRequest
+from .firestore_repository import FirestoreRepository
 from .places import search_eligible_profiles
 from .sheets import SheetsRepository
 
@@ -25,8 +26,20 @@ except RuntimeError:
     app.add_middleware(CORSMiddleware, allow_origins=[], allow_methods=["GET"])
 
 
-def repository() -> SheetsRepository:
-    return SheetsRepository(get_settings())
+def repository() -> FirestoreRepository:
+    return FirestoreRepository(get_settings())
+
+
+def migrate_legacy_sheet_if_needed() -> int:
+    """Imports the existing Google Sheet exactly once and never alters it."""
+    settings = get_settings()
+    if repository().count() or not settings.spreadsheet_id:
+        return 0
+    legacy_leads = SheetsRepository(settings).list(
+        include_archived=True,
+        ensure_sheet=False,
+    )
+    return len(repository().append_new(legacy_leads))
 
 
 @app.get("/")
@@ -46,12 +59,11 @@ def health():
         settings = get_settings()
         return {
             "status": "ok",
-            "credentials": bool(
-                settings.service_account_info
-                or (
-                    settings.service_account_file
-                    and settings.service_account_file.is_file()
-                )
+            "database": "firestore",
+            "firebase_credentials": bool(settings.firebase_service_account_info),
+            "legacy_sheet_migration_available": bool(
+                settings.spreadsheet_id
+                and (settings.service_account_info or settings.service_account_file)
             ),
             "search": "google_places",
         }
@@ -69,7 +81,7 @@ def list_leads(include_archived: bool = True):
         ]
     except Exception as exc:
         raise HTTPException(
-            status_code=502, detail=f"Falha no Google Sheets: {exc}"
+            status_code=502, detail=f"Falha ao carregar os leads: {exc}"
         ) from exc
 
 
@@ -83,6 +95,30 @@ def lead_stats():
         ) from exc
 
 
+@app.get("/api/leads/history")
+def list_lead_history(
+    query: str = "",
+    start_date: str | None = None,
+    end_date: str | None = None,
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=422,
+            detail="A data inicial não pode ser posterior à data final.",
+        )
+    try:
+        return repository().list_history(
+            query=query.strip(),
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Falha ao carregar o histórico de leads: {exc}",
+        ) from exc
+
+
 @app.post("/api/leads/{place_id}/sent")
 def mark_lead_sent(place_id: str):
     try:
@@ -91,7 +127,7 @@ def mark_lead_sent(place_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
-            status_code=502, detail=f"Falha ao atualizar Google Sheets: {exc}"
+            status_code=502, detail=f"Falha ao atualizar o lead: {exc}"
         ) from exc
 
 
@@ -103,7 +139,7 @@ def set_lead_sent_status(place_id: str, request: SentStatusRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
-            status_code=502, detail=f"Falha ao atualizar Google Sheets: {exc}"
+            status_code=502, detail=f"Falha ao atualizar o lead: {exc}"
         ) from exc
 
 
@@ -116,7 +152,7 @@ def delete_lead(place_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
-            status_code=502, detail=f"Falha ao arquivar no Google Sheets: {exc}"
+            status_code=502, detail=f"Falha ao arquivar o lead: {exc}"
         ) from exc
 
 
@@ -127,7 +163,7 @@ def archive_leads(request: ArchiveRequest):
         return {"status": "archived", "count": count}
     except Exception as exc:
         raise HTTPException(
-            status_code=502, detail=f"Falha ao arquivar no Google Sheets: {exc}"
+            status_code=502, detail=f"Falha ao arquivar os leads: {exc}"
         ) from exc
 
 
@@ -168,6 +204,15 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
     except Exception as exc:
         job.status = "failed"
         job.detail = str(exc)
+
+
+@app.on_event("startup")
+async def migrate_legacy_leads() -> None:
+    try:
+        migrate_legacy_sheet_if_needed()
+    except Exception as exc:
+        # The app remains online for new research if the legacy source is unavailable.
+        print(f"Migração inicial da planilha não concluída: {exc}")
 
 
 @app.post("/api/search", status_code=202)

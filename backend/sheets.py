@@ -33,6 +33,8 @@ HEADERS = [
 
 class SheetsRepository:
     def __init__(self, settings: Settings):
+        if not settings.spreadsheet_id:
+            raise RuntimeError("GOOGLE_SPREADSHEET_ID não está configurado para a migração.")
         scopes = ["https://www.googleapis.com/auth/spreadsheets"]
         if settings.service_account_info:
             credentials = Credentials.from_service_account_info(
@@ -77,8 +79,9 @@ class SheetsRepository:
                 body={"values": [HEADERS]},
             ).execute()
 
-    def list(self, include_archived: bool = False) -> list[Lead]:
-        self.ensure_sheet()
+    def list(self, include_archived: bool = False, ensure_sheet: bool = True) -> list[Lead]:
+        if ensure_sheet:
+            self.ensure_sheet()
         rows = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
             range=f"'{self.sheet_name}'!A2:R",

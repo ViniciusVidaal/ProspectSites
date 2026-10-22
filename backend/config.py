@@ -10,7 +10,8 @@ load_dotenv()
 
 class Settings(BaseModel):
     places_api_key: str
-    spreadsheet_id: str
+    firebase_service_account_info: dict
+    spreadsheet_id: str | None = None
     service_account_file: Path | None = None
     service_account_info: dict | None = None
     sheet_name: str
@@ -23,11 +24,19 @@ def get_settings() -> Settings:
 
     required = {
         "GOOGLE_PLACES_API_KEY": os.getenv("GOOGLE_PLACES_API_KEY"),
-        "GOOGLE_SPREADSHEET_ID": os.getenv("GOOGLE_SPREADSHEET_ID"),
+        "FIREBASE_SERVICE_ACCOUNT_JSON": os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON"),
     }
     missing = [name for name, value in required.items() if not value]
     if missing:
         raise RuntimeError(f"Variáveis ausentes: {', '.join(missing)}")
+
+    firebase_json = required["FIREBASE_SERVICE_ACCOUNT_JSON"]
+    try:
+        firebase_service_account_info = json.loads(firebase_json)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_JSON contém JSON inválido.") from exc
+    if not firebase_service_account_info.get("private_key") or not firebase_service_account_info.get("client_email"):
+        raise RuntimeError("FIREBASE_SERVICE_ACCOUNT_JSON está incompleto.")
 
     service_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
     service_file_value = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
@@ -45,14 +54,10 @@ def get_settings() -> Settings:
         service_file = Path(service_file_value).expanduser().resolve()
         if not service_file.is_file():
             raise RuntimeError("Arquivo da conta de serviço não encontrado.")
-    else:
-        raise RuntimeError(
-            "Configure GOOGLE_SERVICE_ACCOUNT_JSON ou GOOGLE_SERVICE_ACCOUNT_FILE."
-        )
-
     return Settings(
         places_api_key=required["GOOGLE_PLACES_API_KEY"],
-        spreadsheet_id=required["GOOGLE_SPREADSHEET_ID"],
+        firebase_service_account_info=firebase_service_account_info,
+        spreadsheet_id=os.getenv("GOOGLE_SPREADSHEET_ID"),
         service_account_file=service_file,
         service_account_info=service_info,
         sheet_name=os.getenv("GOOGLE_SHEET_NAME", "Leads"),

@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 import httpx
 
 from .models import Lead
-from .sheets import today_brazil
+from .dates import today_brazil
 
 PLATFORM_HOSTS = {
     "instagram.com": "Instagram",
