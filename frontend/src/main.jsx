@@ -94,7 +94,7 @@ function App() {
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyStartDate, setHistoryStartDate] = useState("");
   const [historyEndDate, setHistoryEndDate] = useState("");
-  const [historyPeriod, setHistoryPeriod] = useState("15");
+  const [historyPeriod, setHistoryPeriod] = useState("all");
   const [apiKeys, setApiKeys] = useState([]);
   const [settingsPassword, setSettingsPassword] = useState("");
   const [apiName, setApiName] = useState("");
@@ -168,7 +168,7 @@ function App() {
   };
 
   useEffect(() => {
-    applyHistoryPeriod("15");
+    applyHistoryPeriod("all");
   }, []);
 
   useEffect(() => {
