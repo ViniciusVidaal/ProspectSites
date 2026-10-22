@@ -113,7 +113,7 @@ function App() {
     let lastError;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
-        const leadItems = await api("/api/leads?include_archived=true");
+        const leadItems = await api("/api/leads?include_archived=false&limit=100");
         setLeads(leadItems);
         localStorage.setItem(LEADS_CACHE, JSON.stringify(leadItems));
         try {

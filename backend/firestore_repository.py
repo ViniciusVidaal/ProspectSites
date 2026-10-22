@@ -61,8 +61,11 @@ class FirestoreRepository:
         aggregate = self.collection.count().get()
         return int(aggregate[0][0].value) if aggregate else 0
 
-    def list(self, include_archived: bool = False) -> list[Lead]:
-        leads = [self._lead(item) for item in self.collection.stream()]
+    def list(self, include_archived: bool = False, limit: int | None = None) -> list[Lead]:
+        reference = self.collection.order_by("collected_on", direction=firestore.Query.DESCENDING)
+        if limit:
+            reference = reference.limit(max(1, min(limit, 100)))
+        leads = [self._lead(item) for item in reference.stream()]
         if not include_archived:
             leads = [lead for lead in leads if not lead.archived]
         return sorted(
@@ -129,6 +132,7 @@ class FirestoreRepository:
         reference.update({
             "sent": sent,
             "sent_at": sent_at,
+            "sent_on": datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat() if sent else "",
             "updated_at": firestore.SERVER_TIMESTAMP,
         })
         return {"place_id": place_id, "sent": sent, "sent_at": sent_at}
@@ -208,12 +212,15 @@ class FirestoreRepository:
         return len(existing)
 
     def stats(self) -> dict[str, int]:
-        leads = self.list(include_archived=True)
-        today = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")
+        def count(reference) -> int:
+            result = reference.count().get()
+            return int(result[0][0].value) if result else 0
+
+        today = datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
         return {
-            "total": len(leads),
-            "active": sum(not lead.archived for lead in leads),
-            "sent": sum(lead.sent for lead in leads),
-            "sent_today": sum(lead.sent and lead.sent_at.startswith(today) for lead in leads),
-            "archived": sum(lead.archived for lead in leads),
+            "total": count(self.collection),
+            "active": count(self.collection.where("archived", "==", False)),
+            "sent": count(self.collection.where("sent", "==", True)),
+            "sent_today": count(self.collection.where("sent_on", "==", today)),
+            "archived": count(self.collection.where("archived", "==", True)),
         }

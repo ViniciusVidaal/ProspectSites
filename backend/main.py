@@ -37,6 +37,18 @@ def api_keys() -> ApiKeyRepository:
     return ApiKeyRepository(settings)
 
 
+def firestore_http_error(action: str, exc: Exception) -> HTTPException:
+    if "quota" in str(exc).casefold():
+        return HTTPException(
+            status_code=429,
+            detail=(
+                "O Firebase atingiu o limite diário de leituras. Seus leads já salvos continuam seguros. "
+                "Tente novamente após a renovação diária do Firebase."
+            ),
+        )
+    return HTTPException(status_code=502, detail=f"Falha ao {action}: {exc}")
+
+
 def migrate_legacy_sheet_if_needed() -> int:
     """Imports the existing Google Sheet exactly once and never alters it."""
     settings = get_settings()
@@ -79,17 +91,15 @@ def health():
 
 
 @app.get("/api/leads")
-def list_leads(include_archived: bool = True):
+def list_leads(include_archived: bool = False, limit: int = 100):
     try:
-        leads = repository().list(include_archived=include_archived)
+        leads = repository().list(include_archived=include_archived, limit=limit)
         return [
             lead.model_copy(update={"sent": lead.sent or lead.archived})
             for lead in leads
         ]
     except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Falha ao carregar os leads: {exc}"
-        ) from exc
+        raise firestore_http_error("carregar os leads", exc) from exc
 
 
 @app.get("/api/stats")
@@ -97,9 +107,7 @@ def lead_stats():
     try:
         return repository().stats()
     except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Falha ao calcular métricas: {exc}"
-        ) from exc
+        raise firestore_http_error("calcular metricas", exc) from exc
 
 
 @app.get("/api/leads/history")
