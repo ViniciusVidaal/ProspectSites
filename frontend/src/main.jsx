@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
   Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
-  Search, Star, Sun, Trash2, Users, X, ListFilter, Settings, KeyRound, AlertTriangle
+  Search, Star, Sun, Trash2, Users, X, ListFilter, Settings, KeyRound, AlertTriangle, Menu, History, Undo2
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
 import "./styles.css";
@@ -90,7 +90,7 @@ function App() {
   const [leadActions, setLeadActions] = useState({});
   const [messageOpen, setMessageOpen] = useState(false);
   const [historyLeads, setHistoryLeads] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [deletionHistoryLoading, setDeletionHistoryLoading] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyStartDate, setHistoryStartDate] = useState("");
   const [historyEndDate, setHistoryEndDate] = useState("");
@@ -100,6 +100,9 @@ function App() {
   const [apiName, setApiName] = useState("");
   const [apiValue, setApiValue] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [deletedLeads, setDeletedLeads] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const dispatchWindowRef = useRef(null);
 
   const loadLeads = async ({ silent = false, retries = 5 } = {}) => {
@@ -181,6 +184,15 @@ function App() {
 
   useEffect(() => { if (activeView === "settings") loadApiKeys(); }, [activeView]);
 
+  const loadDeletionHistory = async () => {
+    setDeletionHistoryLoading(true);
+    try { setDeletedLeads(await api("/api/history/deletions")); }
+    catch (error) { setNotice(error.message); }
+    finally { setDeletionHistoryLoading(false); }
+  };
+
+  useEffect(() => { if (activeView === "history") loadDeletionHistory(); }, [activeView]);
+
   const settingsRequest = async (path, options = {}) => api(path, {
     ...options,
     headers: { "X-Settings-Password": settingsPassword, ...(options.headers || {}) },
@@ -203,6 +215,17 @@ function App() {
     try { await settingsRequest(`/api/settings/api-keys/${encodeURIComponent(key.id)}/activate`, { method: "POST" }); setNotice(`${key.name} está ativa agora.`); await loadApiKeys(); }
     catch (error) { setNotice(error.message); }
     finally { setSettingsLoading(false); }
+  };
+
+  const chooseView = (view) => { setActiveView(view); setSidebarOpen(false); };
+
+  const restoreLead = async (lead) => {
+    if (!window.confirm(`Restaurar ${lead.company_name} para a base de leads?`)) return;
+    try {
+      await api(`/api/leads/${encodeURIComponent(lead.place_id)}/restore`, { method: "POST" });
+      setNotice(`${lead.company_name} foi restaurado para a base.`);
+      await Promise.all([loadDeletionHistory(), loadLeads({ silent: true })]);
+    } catch (error) { setNotice(error.message); }
   };
 
   useEffect(() => {
@@ -517,8 +540,9 @@ function App() {
   }, [dispatch?.status, dispatch?.nextAt, dispatch?.index]);
 
   return (
-    <main>
-      <header className="topbar"><a className="brand" href="#"><span><Radar size={20}/></span>Prospect Sites</a><div className="topbar-actions"><nav className="app-nav" aria-label="Navegação principal"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => setActiveView("prospecting")}>Prospectar</button><button className={activeView === "leads" ? "active" : ""} onClick={() => setActiveView("leads")}><Users size={15}/>Leads</button><button className={activeView === "settings" ? "active" : ""} onClick={() => setActiveView("settings")}><Settings size={15}/>Configurações</button></nav><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></div></header>
+    <main className="app-shell">
+      <nav className={`sidebar ${sidebarOpen ? "open" : ""}`} aria-label="Navegação principal"><a className="brand" href="#" onClick={() => chooseView("prospecting")}><span><Radar size={20}/></span>Prospect Sites</a><div className="sidebar-links"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => chooseView("prospecting")}><Radar size={17}/>Prospectar</button><button className={activeView === "leads" ? "active" : ""} onClick={() => chooseView("leads")}><Users size={17}/>Leads</button><button className={activeView === "history" ? "active" : ""} onClick={() => chooseView("history")}><History size={17}/>Histórico</button><button className={activeView === "settings" ? "active" : ""} onClick={() => chooseView("settings")}><Settings size={17}/>Configurações</button></div></nav>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
+      <div className="app-content"><header className="topbar"><button className="menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Abrir menu"><Menu size={20}/></button><div className="mobile-brand">Prospect Sites</div><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
 
       {activeView === "prospecting" && <>
       <section className="metrics-row">
@@ -622,6 +646,8 @@ function App() {
         <div className="settings-grid"><form className="settings-card" onSubmit={saveApiKey}><div className="panel-title"><span><KeyRound size={18}/></span><div><h2>Nova API</h2><p>A chave é enviada com segurança ao backend e nunca é exibida novamente.</p></div></div><label><span>Senha das configurações</span><input type="password" value={settingsPassword} onChange={(event) => setSettingsPassword(event.target.value)} placeholder="Senha definida no Render" autoComplete="current-password" /></label><label><span>Nome para identificar a API</span><input value={apiName} onChange={(event) => setApiName(event.target.value)} placeholder="Ex: API Vinícius" required /></label><label><span>Chave da API do Google Maps</span><input type="password" value={apiValue} onChange={(event) => setApiValue(event.target.value)} placeholder="Cole a chave aqui" required autoComplete="off" /></label><button className="primary" disabled={settingsLoading}><KeyRound size={17}/>{settingsLoading ? "Salvando..." : "Salvar e usar esta API"}</button></form><div className="settings-card api-status-card"><div className="panel-title"><span><AlertTriangle size={18}/></span><div><h2>Status das APIs</h2><p>Uma chave marcada como esgotada precisa ser ativada novamente manualmente após a renovação.</p></div></div><div className="api-key-list">{apiKeys.map((key) => <article key={key.id}><div><strong>{key.name}</strong><small>{key.status === "active" ? "Em uso" : key.status === "exhausted" ? `Limite atingido · renovação estimada: ${key.renews_on || "consulte o Google Cloud"}` : "Disponível"}</small>{key.last_error && <small className="api-error">{key.last_error}</small>}</div><div>{key.status === "active" ? <span className="active-badge">Ativa</span> : <button className="activate-api" disabled={settingsLoading} onClick={() => activateApiKey(key)}>Usar esta API</button>}</div></article>)}{!settingsLoading && !apiKeys.length && <div className="empty"><KeyRound size={28}/><strong>Nenhuma API cadastrada</strong><span>Cadastre uma chave para gerenciá-la por aqui.</span></div>}</div></div></div>
       </section>}
 
+      {activeView === "history" && <section className="history-page"><div className="history-hero"><div className="panel-title"><span><History size={19}/></span><div><h1>Histórico de exclusões</h1><p>Leads excluídos manualmente do painel. Você pode restaurá-los a qualquer momento.</p></div></div><span className="history-count">{deletedLeads.filter((lead) => !lead.restored_at).length} excluído(s)</span></div><div className="leads-panel history-table-panel"><div className="table-wrap"><table><thead><tr><th>Empresa</th><th>Contato</th><th>Coletado em</th><th>Excluído em</th><th>Situação</th><th>Ação</th></tr></thead><tbody>{deletedLeads.map((lead) => <tr key={lead.place_id}><td><strong>{lead.company_name}</strong></td><td>{lead.phone || <span className="muted">Não informado</span>}</td><td>{lead.date || "—"}</td><td>{lead.deleted_at ? new Date(lead.deleted_at).toLocaleString("pt-BR") : "—"}</td><td>{lead.restored_at ? <span className="active-badge">Restaurado</span> : <span className="archived-badge">Excluído</span>}</td><td>{lead.restored_at ? <span className="muted">Já está na base</span> : <button className="activate-api" onClick={() => restoreLead(lead)}><Undo2 size={14}/>Restaurar</button>}</td></tr>)}</tbody></table>{!deletionHistoryLoading && !deletedLeads.length && <div className="empty"><History size={30}/><strong>Nenhuma exclusão registrada</strong><span>Quando você excluir um lead individualmente, ele aparecerá aqui.</span></div>}</div></div></section>}
+
       {messageOpen && <div className="message-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setMessageOpen(false); }}>
         <aside className="message-modal" role="dialog" aria-modal="true" aria-label="Configuração da mensagem">
           <button className="modal-close" onClick={() => setMessageOpen(false)} title="Fechar"><X size={19}/></button>
@@ -655,7 +681,7 @@ function App() {
           </div>}
         </aside>
       </div>}
-    </main>
+      </div></main>
   );
 }
 

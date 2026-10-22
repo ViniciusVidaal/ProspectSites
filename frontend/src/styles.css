@@ -48,7 +48,14 @@ body { background: var(--bg); color: var(--text); transition: background .2s, co
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
-main { max-width: 1500px; margin: auto; padding: 0 30px 50px; }
+.app-shell { min-height: 100vh; }
+.app-content { max-width: 1500px; margin-left: 238px; padding: 0 30px 50px; }
+.sidebar { position: fixed; inset: 0 auto 0 0; z-index: 1000; width: 238px; padding: 22px 14px; border-right: 1px solid var(--line); background: var(--panel); }
+.sidebar .brand { padding: 0 8px 24px; }
+.sidebar-links { display: grid; gap: 5px; }
+.sidebar-links button { height: 44px; padding: 0 12px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 10px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 800; text-align: left; }
+.sidebar-links button:hover, .sidebar-links button.active { color: var(--accent-strong); background: var(--accent-soft); }
+.menu-toggle, .mobile-brand, .sidebar-backdrop { display: none; }
 
 .topbar { height: 74px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 10px; font: 700 18px Manrope; }
@@ -232,8 +239,13 @@ textarea:focus { border-color: var(--accent); }
 }
 
 @media (max-width: 700px) {
-  main { padding: 0 12px 30px; }
+  .app-content { margin-left: 0; padding: 0 12px 30px; }
+  .sidebar { width: min(280px, 82vw); transform: translateX(-105%); transition: transform .2s ease; box-shadow: 18px 0 40px rgba(0,0,0,.18); }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-backdrop { position: fixed; inset: 0; z-index: 999; display: block; border: 0; background: rgba(4, 8, 12, .45); }
   .topbar { height: 64px; }
+  .menu-toggle { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; color: var(--text); background: var(--panel); }
+  .mobile-brand { display: block; margin-right: auto; font: 800 14px Manrope; }
   .topbar-actions { gap: 7px; }
   .app-nav button { padding: 0 9px; }
   .theme-toggle span { display: none; }

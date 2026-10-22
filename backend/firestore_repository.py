@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import unicodedata
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import firebase_admin
@@ -125,9 +126,55 @@ class FirestoreRepository:
 
     def archive(self, place_id: str) -> None:
         reference = self.collection.document(place_id)
+        snapshot = reference.get()
+        if not snapshot.exists:
+            raise KeyError("Lead não encontrado no banco de dados.")
+        lead = self._lead(snapshot)
+        firestore.client().batch().update(reference, {
+            "archived": True,
+            "archive_reason": "manual_delete",
+            "archived_at": firestore.SERVER_TIMESTAMP,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }).set(
+            firestore.client().collection("lead_deletion_history").document(place_id),
+            {
+                "place_id": place_id,
+                "company_name": lead.company_name,
+                "phone": lead.phone,
+                "date": lead.date,
+                "deleted_at": firestore.SERVER_TIMESTAMP,
+                "restored_at": None,
+            },
+        ).commit()
+
+    def restore(self, place_id: str) -> None:
+        reference = self.collection.document(place_id)
         if not reference.get().exists:
             raise KeyError("Lead não encontrado no banco de dados.")
-        reference.update({"archived": True, "updated_at": firestore.SERVER_TIMESTAMP})
+        firestore.client().batch().update(reference, {
+            "archived": False,
+            "archive_reason": "",
+            "archived_at": None,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }).set(
+            firestore.client().collection("lead_deletion_history").document(place_id),
+            {"restored_at": firestore.SERVER_TIMESTAMP},
+            merge=True,
+        ).commit()
+
+    def deletion_history(self) -> list[dict]:
+        items = []
+        for snapshot in firestore.client().collection("lead_deletion_history").stream():
+            data = snapshot.to_dict() or {}
+            items.append({
+                "place_id": data.get("place_id", snapshot.id),
+                "company_name": data.get("company_name", "Empresa sem nome"),
+                "phone": data.get("phone", ""),
+                "date": data.get("date", ""),
+                "deleted_at": data.get("deleted_at"),
+                "restored_at": data.get("restored_at"),
+            })
+        return sorted(items, key=lambda item: str(item.get("deleted_at") or ""), reverse=True)
 
     def archive_many(self, place_ids: list[str]) -> int:
         requested = list(dict.fromkeys(place_ids))

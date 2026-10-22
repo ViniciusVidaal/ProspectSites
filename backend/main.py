@@ -200,6 +200,25 @@ def delete_lead(place_id: str):
         ) from exc
 
 
+@app.get("/api/history/deletions")
+def deletion_history():
+    try:
+        return repository().deletion_history()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Não foi possível carregar o histórico de exclusões agora.")
+
+
+@app.post("/api/leads/{place_id}/restore")
+def restore_lead(place_id: str):
+    try:
+        repository().restore(place_id)
+        return {"status": "restored", "place_id": place_id}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        raise HTTPException(status_code=503, detail="Não foi possível restaurar este lead agora. Tente novamente.")
+
+
 @app.post("/api/leads/archive")
 def archive_leads(request: ArchiveRequest):
     try:
