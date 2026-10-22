@@ -115,6 +115,8 @@ def list_lead_history(
     query: str = "",
     start_date: str | None = None,
     end_date: str | None = None,
+    limit: int = 20,
+    cursor: str | None = None,
 ):
     if start_date and end_date and start_date > end_date:
         raise HTTPException(
@@ -122,11 +124,14 @@ def list_lead_history(
             detail="A data inicial não pode ser posterior à data final.",
         )
     try:
-        return repository().list_history(
+        items, next_cursor = repository().list_history(
             query=query.strip(),
             start_date=start_date,
             end_date=end_date,
+            limit=max(1, min(limit, 50)),
+            cursor=cursor,
         )
+        return {"items": items, "next_cursor": next_cursor}
     except Exception as exc:
         raise HTTPException(
             status_code=502,

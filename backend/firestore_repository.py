@@ -75,21 +75,33 @@ class FirestoreRepository:
         query: str = "",
         start_date: str | None = None,
         end_date: str | None = None,
-    ) -> list[Lead]:
+        limit: int = 20,
+        cursor: str | None = None,
+    ) -> tuple[list[Lead], str | None]:
         reference = self.collection
         if start_date:
             reference = reference.where("collected_on", ">=", start_date)
         if end_date:
             reference = reference.where("collected_on", "<=", end_date)
         term = normalize_text(query)
-        leads = [self._lead(item) for item in reference.stream()]
         if term:
+            leads = [self._lead(item) for item in reference.stream()]
             leads = [lead for lead in leads if term in normalize_text(lead.company_name)]
-        return sorted(
-            leads,
-            key=lambda lead: (collected_on(lead.date), lead.company_name.casefold()),
-            reverse=True,
-        )
+            leads = sorted(leads, key=lambda lead: (collected_on(lead.date), lead.company_name.casefold()), reverse=True)
+            offset = int(cursor or 0) if str(cursor or "").isdigit() else 0
+            page = leads[offset:offset + limit]
+            next_cursor = str(offset + limit) if offset + limit < len(leads) else None
+            return page, next_cursor
+
+        reference = reference.order_by("collected_on", direction=firestore.Query.DESCENDING)
+        if cursor:
+            snapshot = self.collection.document(cursor).get()
+            if snapshot.exists:
+                reference = reference.start_after(snapshot)
+        snapshots = list(reference.limit(limit + 1).stream())
+        page = [self._lead(item) for item in snapshots[:limit]]
+        next_cursor = snapshots[limit - 1].id if len(snapshots) > limit else None
+        return page, next_cursor
 
     def append_new(self, leads: list[Lead]) -> list[Lead]:
         unique = {lead.place_id: lead for lead in leads if lead.place_id}

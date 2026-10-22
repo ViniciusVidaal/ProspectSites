@@ -95,6 +95,9 @@ function App() {
   const [historyStartDate, setHistoryStartDate] = useState("");
   const [historyEndDate, setHistoryEndDate] = useState("");
   const [historyPeriod, setHistoryPeriod] = useState("all");
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyCursors, setHistoryCursors] = useState([null]);
+  const [historyNextCursor, setHistoryNextCursor] = useState(null);
   const [apiKeys, setApiKeys] = useState([]);
   const [settingsPassword, setSettingsPassword] = useState("");
   const [apiName, setApiName] = useState("");
@@ -150,15 +153,18 @@ function App() {
     setHistoryEndDate(isoDate(end));
   };
 
-  const loadHistory = async ({ silent = false } = {}) => {
+  const loadHistory = async ({ silent = false, cursor = null } = {}) => {
     setHistoryLoading(true);
     try {
       const params = new URLSearchParams();
       if (historyQuery.trim()) params.set("query", historyQuery.trim());
       if (historyStartDate) params.set("start_date", historyStartDate);
       if (historyEndDate) params.set("end_date", historyEndDate);
-      const items = await api(`/api/leads/history?${params.toString()}`);
-      setHistoryLeads(items);
+      params.set("limit", "20");
+      if (cursor) params.set("cursor", cursor);
+      const result = await api(`/api/leads/history?${params.toString()}`);
+      setHistoryLeads(result.items || []);
+      setHistoryNextCursor(result.next_cursor || null);
       if (!silent) setNotice("");
     } catch (error) {
       setNotice(error.message);
@@ -173,8 +179,23 @@ function App() {
 
   useEffect(() => {
     if (activeView !== "leads" || !historyEndDate) return;
-    loadHistory({ silent: true });
+    setHistoryPage(0);
+    setHistoryCursors([null]);
+    loadHistory({ silent: true, cursor: null });
   }, [activeView, historyStartDate, historyEndDate]);
+
+  const changeHistoryPage = (direction) => {
+    if (direction === "next" && historyNextCursor) {
+      const nextPage = historyPage + 1;
+      setHistoryCursors((current) => [...current.slice(0, nextPage), historyNextCursor]);
+      setHistoryPage(nextPage);
+      loadHistory({ cursor: historyNextCursor });
+    } else if (direction === "previous" && historyPage > 0) {
+      const previousPage = historyPage - 1;
+      setHistoryPage(previousPage);
+      loadHistory({ cursor: historyCursors[previousPage] });
+    }
+  };
 
   const loadApiKeys = async () => {
     setSettingsLoading(true);
@@ -618,9 +639,9 @@ function App() {
       {activeView === "leads" && <section className="history-page">
         <div className="history-hero">
           <div className="panel-title"><span><Users size={19}/></span><div><h1>Base de leads</h1><p>Histórico organizado de todas as empresas salvas no banco de dados.</p></div></div>
-          <span className="history-count">{historyLeads.length} lead(s) encontrado(s)</span>
+          <span className="history-count">Página {historyPage + 1} · até 20 leads</span>
         </div>
-        <form className="history-filters" onSubmit={(event) => { event.preventDefault(); loadHistory(); }}>
+        <form className="history-filters" onSubmit={(event) => { event.preventDefault(); setHistoryPage(0); setHistoryCursors([null]); loadHistory({ cursor: null }); }}>
           <label className="history-search"><span>Pesquisar empresa</span><div className="input-shell"><Search size={17}/><input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Digite o nome da empresa" /></div></label>
           <label><span>Data inicial</span><input type="date" value={historyStartDate} onChange={(event) => { setHistoryPeriod("custom"); setHistoryStartDate(event.target.value); }} /></label>
           <label><span>Data final</span><input type="date" value={historyEndDate} onChange={(event) => { setHistoryPeriod("custom"); setHistoryEndDate(event.target.value); }} /></label>
@@ -643,6 +664,7 @@ function App() {
             </table>
             {!historyLoading && !historyLeads.length && <div className="empty"><Users size={31}/><strong>Nenhum lead encontrado</strong><span>Altere a busca ou o período selecionado.</span></div>}
           </div>
+          <div className="pagination"><button disabled={historyLoading || historyPage === 0} onClick={() => changeHistoryPage("previous")}>Anterior</button><span>Página {historyPage + 1}</span><button disabled={historyLoading || !historyNextCursor} onClick={() => changeHistoryPage("next")}>Próxima</button></div>
         </div>
       </section>}
 
