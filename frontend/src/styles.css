@@ -264,7 +264,8 @@ textarea:focus { border-color: var(--accent); }
 }
 
 @media (max-width: 700px) {
-  .app-content { margin-left: 0; padding: 0 12px 30px; }
+  .app-shell, .app-content { width: 100%; max-width: 100%; }
+  .app-content, .sidebar-is-collapsed .app-content { margin-left: 0; padding: 0 12px 30px; }
   .sidebar { width: min(280px, 82vw); transform: translateX(-105%); transition: transform .2s ease; box-shadow: 18px 0 40px rgba(0,0,0,.18); }
   .sidebar.open { transform: translateX(0); }
   .sidebar-backdrop { position: fixed; inset: 0; z-index: 999; display: block; border: 0; background: rgba(4, 8, 12, .45); }
