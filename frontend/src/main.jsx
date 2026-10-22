@@ -232,6 +232,17 @@ function App() {
     finally { setSettingsLoading(false); }
   };
 
+  const deleteApiKey = async (key) => {
+    if (!window.confirm(`Excluir a API "${key.name}"? Essa ação não pode ser desfeita.`)) return;
+    setSettingsLoading(true);
+    try {
+      const result = await api(`/api/settings/api-keys/${encodeURIComponent(key.id)}`, { method: "DELETE" });
+      setSettingsNotice(result.activated_name ? `API excluída. ${result.activated_name} está ativa agora.` : "API excluída com sucesso.");
+      await loadApiKeys();
+    } catch (error) { setSettingsNotice(error.message); }
+    finally { setSettingsLoading(false); }
+  };
+
   const chooseView = (view) => { setActiveView(view); setSidebarOpen(false); };
   const toggleSidebar = () => {
     if (window.innerWidth <= 700) setSidebarOpen(true);
@@ -652,6 +663,7 @@ function App() {
           </div>
           <div className="pagination"><button disabled={historyLoading || historyPage === 0} onClick={() => changeHistoryPage("previous")}>Anterior</button><span>Página {historyPage + 1}</span><button disabled={historyLoading || !historyNextCursor} onClick={() => changeHistoryPage("next")}>Próxima</button></div>
         </div>
+        {apiKeys.length > 0 && <div className="api-delete-list" aria-label="Excluir APIs cadastradas">{apiKeys.map((key) => <button key={key.id} className="delete-api" disabled={settingsLoading} onClick={() => deleteApiKey(key)} title={`Excluir ${key.name}`}><Trash2 size={14}/>Excluir {key.name}</button>)}</div>}
       </section>}
 
       {activeView === "settings" && <section className="settings-page">

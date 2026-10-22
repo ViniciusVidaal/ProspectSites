@@ -160,6 +160,19 @@ def activate_api_key(key_id: str):
         raise HTTPException(status_code=503, detail="Não foi possível ativar esta API. Tente novamente.")
 
 
+@app.delete("/api/settings/api-keys/{key_id}")
+def delete_api_key(key_id: str):
+    try:
+        return api_keys().delete(key_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Não foi possível excluir esta API. Tente novamente.",
+        )
+
+
 @app.post("/api/leads/{place_id}/sent")
 def mark_lead_sent(place_id: str):
     try:

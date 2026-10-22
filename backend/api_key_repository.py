@@ -79,6 +79,38 @@ class ApiKeyRepository:
         batch.update(reference, {"status": "active", "activated_at": firestore.SERVER_TIMESTAMP, "last_error": ""})
         batch.commit()
 
+    def delete(self, key_id: str) -> dict:
+        """Removes a stored key and promotes another one when necessary."""
+        reference = self.collection.document(key_id)
+        snapshot = reference.get()
+        if not snapshot.exists:
+            raise KeyError("API não encontrada.")
+
+        data = snapshot.to_dict() or {}
+        was_active = data.get("status") == "active"
+        alternatives = sorted(
+            (item for item in self.collection.stream() if item.id != key_id),
+            key=lambda item: str((item.to_dict() or {}).get("name", "")).casefold(),
+        )
+        batch = firestore.client().batch()
+        batch.delete(reference)
+        activated_name = ""
+        if was_active and alternatives:
+            next_key = alternatives[0]
+            next_data = next_key.to_dict() or {}
+            batch.update(next_key.reference, {
+                "status": "active",
+                "activated_at": firestore.SERVER_TIMESTAMP,
+                "last_error": "",
+            })
+            activated_name = str(next_data.get("name", "Outra API"))
+        batch.commit()
+        return {
+            "id": key_id,
+            "name": str(data.get("name", "API")),
+            "activated_name": activated_name,
+        }
+
     def mark_exhausted(self, key_id: str | None, detail: str = "") -> None:
         if not key_id:
             return
