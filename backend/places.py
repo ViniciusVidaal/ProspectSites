@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 import re
+from typing import Callable
 from urllib.parse import urlparse
 
 import httpx
@@ -104,6 +105,7 @@ async def search_eligible_profiles(
     query: str,
     minimum_reviews: int = 50,
     max_pages: int = 3,
+    on_successful_request: Callable[[], None] | None = None,
 ) -> PlacesSearchReport:
     report = PlacesSearchReport()
     headers = {
@@ -139,6 +141,8 @@ async def search_eligible_profiles(
                 json=payload,
             )
             ensure_places_response(response)
+            if on_successful_request:
+                on_successful_request()
             data = response.json()
             report.pages += 1
 

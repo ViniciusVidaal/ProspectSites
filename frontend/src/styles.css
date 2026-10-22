@@ -200,6 +200,15 @@ html[data-theme="dark"] .whatsapp-action.sent { background: #253329; color: #88d
 .api-delete-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .delete-api { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 36px; padding: 0 11px; border: 1px solid var(--danger); border-radius: 8px; color: var(--danger); background: var(--panel); font-size: 10px; font-weight: 800; white-space: nowrap; }
 .delete-api:hover:not(:disabled) { background: var(--danger-soft); }
+.api-usage-section { margin-top: 16px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: var(--shadow); }
+.api-usage-section h2 { margin: 0; font-size: 15px; }
+.api-usage-section > p { margin: 6px 0 16px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.api-usage-list { display: grid; gap: 9px; }
+.api-usage-list article { display: flex; align-items: center; gap: 14px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.api-usage-list strong, .api-usage-list small, .api-usage-list span { display: block; }
+.api-usage-list small, .api-usage-list span { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.api-usage-numbers { margin-left: auto; text-align: right; }
+.api-usage-numbers b { font-size: 13px; }
 
 .message-modal-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 18px; background: rgba(3, 8, 14, .68); backdrop-filter: blur(5px); }
 .message-modal { position: relative; width: min(680px, 100%); max-height: calc(100vh - 36px); overflow-y: auto; padding: 25px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: 0 28px 90px rgba(0,0,0,.34); }
@@ -250,6 +259,8 @@ textarea:focus { border-color: var(--accent); }
   .history-filters { grid-template-columns: 1fr 1fr; }
   .history-filters .history-search { grid-column: 1 / -1; }
   .settings-grid { grid-template-columns: 1fr; }
+  .api-usage-list article { align-items: flex-start; flex-wrap: wrap; }
+  .api-usage-numbers { margin-left: 0; text-align: left; }
 }
 
 @media (max-width: 700px) {

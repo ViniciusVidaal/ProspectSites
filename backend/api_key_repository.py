@@ -9,6 +9,13 @@ from firebase_admin import firestore
 from .config import Settings
 
 
+MONTHLY_FREE_REQUESTS = 1000
+
+
+def current_billing_month() -> str:
+    return datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m")
+
+
 def next_renewal_date() -> str:
     now = datetime.now(ZoneInfo("America/Los_Angeles")).date()
     first_next_month = (now.replace(day=28) + timedelta(days=4)).replace(day=1)
@@ -22,7 +29,37 @@ class ApiKeyRepository:
         self.settings = settings
         self.collection = firestore.client().collection(self.collection_name)
 
+    def _refresh_monthly_statuses(self) -> None:
+        """Re-enables the previously exhausted selection after its new monthly cycle."""
+        today = datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
+        exhausted = [
+            item for item in self.collection.where("status", "==", "exhausted").stream()
+            if (item.to_dict() or {}).get("renews_on", "") <= today
+        ]
+        if not exhausted:
+            return
+        active = list(self.collection.where("status", "==", "active").limit(1).stream())
+        batch = firestore.client().batch()
+        for item in exhausted:
+            batch.update(item.reference, {
+                "status": "inactive",
+                "quota_exhausted_at": None,
+                "last_error": "",
+            })
+        if not active:
+            selected = sorted(
+                exhausted,
+                key=lambda item: str((item.to_dict() or {}).get("activated_at") or ""),
+                reverse=True,
+            )[0]
+            batch.update(selected.reference, {
+                "status": "active",
+                "activated_at": firestore.SERVER_TIMESTAMP,
+            })
+        batch.commit()
+
     def active(self) -> tuple[str, str | None]:
+        self._refresh_monthly_statuses()
         active = list(self.collection.where("status", "==", "active").limit(1).stream())
         if active:
             data = active[0].to_dict() or {}
@@ -32,9 +69,14 @@ class ApiKeyRepository:
         return self.settings.places_api_key, None
 
     def list_public(self) -> list[dict]:
+        self._refresh_monthly_statuses()
+        month = current_billing_month()
         items = []
         for snapshot in self.collection.stream():
             data = snapshot.to_dict() or {}
+            used = int(data.get("usage_requests", 0) or 0)
+            if data.get("usage_month") != month:
+                used = 0
             items.append({
                 "id": snapshot.id,
                 "name": data.get("name", "API sem nome"),
@@ -44,6 +86,11 @@ class ApiKeyRepository:
                 "quota_exhausted_at": data.get("quota_exhausted_at"),
                 "renews_on": data.get("renews_on", ""),
                 "last_error": data.get("last_error", ""),
+                "requests_used": used,
+                "requests_remaining": max(MONTHLY_FREE_REQUESTS - used, 0),
+                "monthly_request_limit": MONTHLY_FREE_REQUESTS,
+                "usage_month": month,
+                "next_renewal_on": next_renewal_date(),
             })
         return sorted(items, key=lambda item: (item["status"] != "active", item["name"].casefold()))
 
@@ -65,6 +112,9 @@ class ApiKeyRepository:
             "quota_exhausted_at": None,
             "renews_on": "",
             "last_error": "",
+            "usage_month": current_billing_month(),
+            "usage_requests": 0,
+            "last_usage_at": None,
         })
         batch.commit()
         return {"id": reference.id, "name": clean_name, "status": "active" if make_active else "inactive"}
@@ -78,6 +128,31 @@ class ApiKeyRepository:
             batch.update(snapshot.reference, {"status": "inactive"})
         batch.update(reference, {"status": "active", "activated_at": firestore.SERVER_TIMESTAMP, "last_error": ""})
         batch.commit()
+
+    def record_usage(self, key_id: str | None) -> None:
+        """Registers a successful Places request made by this application only."""
+        if not key_id:
+            return
+        reference = self.collection.document(key_id)
+        transaction = firestore.client().transaction()
+
+        @firestore.transactional
+        def update_usage(transaction, document_reference):
+            snapshot = document_reference.get(transaction=transaction)
+            if not snapshot.exists:
+                return
+            data = snapshot.to_dict() or {}
+            month = current_billing_month()
+            used = int(data.get("usage_requests", 0) or 0)
+            if data.get("usage_month") != month:
+                used = 0
+            transaction.update(document_reference, {
+                "usage_month": month,
+                "usage_requests": used + 1,
+                "last_usage_at": firestore.SERVER_TIMESTAMP,
+            })
+
+        update_usage(transaction, reference)
 
     def delete(self, key_id: str) -> dict:
         """Removes a stored key and promotes another one when necessary."""

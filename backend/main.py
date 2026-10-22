@@ -252,12 +252,14 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
     try:
         job.status = "running"
         job.detail = "Consultando perfis no Google"
-        key_value, key_id = api_keys().active()
+        key_repository = api_keys()
+        key_value, key_id = key_repository.active()
         report = await search_eligible_profiles(
             key_value,
             request.query,
             minimum_reviews=request.minimum_reviews,
             max_pages=3,
+            on_successful_request=lambda: key_repository.record_usage(key_id),
         )
         job.total = report.scanned
         job.processed = report.scanned

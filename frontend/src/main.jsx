@@ -138,6 +138,11 @@ function App() {
   useEffect(() => { loadLeads({ silent: leads.length > 0 }); }, []);
 
   const isoDate = (date) => date.toISOString().slice(0, 10);
+  const formatDate = (value) => {
+    if (!value) return "—";
+    const [year, month, day] = value.split("-");
+    return year && month && day ? `${day}/${month}/${year}` : value;
+  };
 
   const applyHistoryPeriod = (period) => {
     setHistoryPeriod(period);
@@ -663,7 +668,6 @@ function App() {
           </div>
           <div className="pagination"><button disabled={historyLoading || historyPage === 0} onClick={() => changeHistoryPage("previous")}>Anterior</button><span>Página {historyPage + 1}</span><button disabled={historyLoading || !historyNextCursor} onClick={() => changeHistoryPage("next")}>Próxima</button></div>
         </div>
-        {apiKeys.length > 0 && <div className="api-delete-list" aria-label="Excluir APIs cadastradas">{apiKeys.map((key) => <button key={key.id} className="delete-api" disabled={settingsLoading} onClick={() => deleteApiKey(key)} title={`Excluir ${key.name}`}><Trash2 size={14}/>Excluir {key.name}</button>)}</div>}
       </section>}
 
       {activeView === "settings" && <section className="settings-page">
@@ -707,6 +711,7 @@ function App() {
           </div>}
         </aside>
       </div>}
+      {activeView === "settings" && apiKeys.length > 0 && <section className="api-usage-section"><h2>Uso estimado no Prospect Sites</h2><p>Contagem das requisições feitas por este sistema neste mês. Chamadas feitas fora daqui não entram neste cálculo.</p><div className="api-usage-list">{apiKeys.map((key) => <article key={key.id}><div><strong>{key.name}</strong><small>{key.status === "active" ? "Em uso" : key.status === "exhausted" ? "Franquia mensal esgotada" : "Disponível"}</small></div><div className="api-usage-numbers"><b>{key.requests_used || 0} / {key.monthly_request_limit || 1000}</b><span>{key.requests_remaining ?? 1000} restantes</span><small>Renova em {formatDate(key.next_renewal_on)}</small></div><button className="delete-api" disabled={settingsLoading} onClick={() => deleteApiKey(key)} title={`Excluir ${key.name}`}><Trash2 size={14}/>Excluir</button></article>)}</div></section>}
       </div></main>
   );
 }
