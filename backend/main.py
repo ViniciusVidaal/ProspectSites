@@ -188,9 +188,7 @@ def mark_lead_sent(place_id: str):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Falha ao atualizar o lead: {exc}"
-        ) from exc
+        raise firestore_http_error("atualizar o lead", exc) from exc
 
 
 @app.post("/api/leads/{place_id}/sent-status")
@@ -200,9 +198,7 @@ def set_lead_sent_status(place_id: str, request: SentStatusRequest):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Falha ao atualizar o lead: {exc}"
-        ) from exc
+        raise firestore_http_error("atualizar o lead", exc) from exc
 
 
 @app.delete("/api/leads/{place_id}")

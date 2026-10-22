@@ -354,7 +354,7 @@ function App() {
 
   const markSent = async (placeId) => {
     const original = leads.find((lead) => lead.place_id === placeId);
-    if (!original || original.sent || leadActions[placeId]) return;
+    if (!original || original.sent || leadActions[placeId]) return false;
     setLeadActions((current) => ({ ...current, [placeId]: "sending" }));
     setLeads((items) => items.map((lead) =>
       lead.place_id === placeId ? { ...lead, sent: true } : lead
@@ -367,6 +367,7 @@ function App() {
     try {
       const updated = await api(`/api/leads/${encodeURIComponent(placeId)}/sent`, { method: "POST", keepalive: true });
       setLeads((items) => items.map((lead) => lead.place_id === placeId ? { ...lead, ...updated } : lead));
+      return true;
     } catch (error) {
       setLeads((items) => items.map((lead) =>
         lead.place_id === placeId ? original : lead
@@ -376,7 +377,8 @@ function App() {
         sent: Math.max(0, Number(current.sent || 0) - 1),
         sent_today: Math.max(0, Number(current.sent_today || 0) - 1),
       }));
-      setNotice(`O WhatsApp foi aberto, mas não foi possível marcar como enviado: ${error.message}`);
+      setNotice(`O WhatsApp foi aberto, mas o envio não foi registrado: ${error.message}`);
+      return false;
     } finally {
       setLeadActions((current) => {
         const next = { ...current };
@@ -628,7 +630,7 @@ function App() {
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>
                 <td><button className={`status-toggle ${lead.sent ? "sent-badge" : "pending-badge"}`} disabled={Boolean(leadActions[lead.place_id])} onClick={() => changeSentStatus(lead, !lead.sent)} title={lead.sent ? "Alterar manualmente para pendente" : "Alterar manualmente para enviado"}>{leadActions[lead.place_id] === "status" ? <LoaderCircle className="spin" size={12}/> : lead.sent ? <><Check size={12}/>Enviado</> : <>Pendente</>}</button>{lead.sent_at && <small>{lead.sent_at}</small>}</td>
-                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Excluir do painel">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Excluir do painel">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
               </tr>)}</tbody>
             </table>
             {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}
