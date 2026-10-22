@@ -1,7 +1,7 @@
 import asyncio
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
@@ -35,14 +35,6 @@ def api_keys() -> ApiKeyRepository:
     settings = get_settings()
     repository()
     return ApiKeyRepository(settings)
-
-
-def require_settings_password(x_settings_password: str | None = Header(default=None)) -> None:
-    expected = get_settings().settings_admin_password
-    if not expected:
-        raise HTTPException(status_code=503, detail="A área de configurações ainda não foi protegida. Configure SETTINGS_ADMIN_PASSWORD no Render.")
-    if x_settings_password != expected:
-        raise HTTPException(status_code=401, detail="Senha de configurações incorreta.")
 
 
 def migrate_legacy_sheet_if_needed() -> int:
@@ -147,7 +139,7 @@ def list_api_keys():
         raise HTTPException(status_code=503, detail="Não foi possível carregar as configurações de API agora.")
 
 
-@app.post("/api/settings/api-keys", dependencies=[Depends(require_settings_password)])
+@app.post("/api/settings/api-keys")
 def add_api_key(request: ApiKeyCreateRequest):
     try:
         return api_keys().add(request.name, request.api_key, request.make_active)
@@ -157,7 +149,7 @@ def add_api_key(request: ApiKeyCreateRequest):
         raise HTTPException(status_code=503, detail="Não foi possível salvar a API. Tente novamente.")
 
 
-@app.post("/api/settings/api-keys/{key_id}/activate", dependencies=[Depends(require_settings_password)])
+@app.post("/api/settings/api-keys/{key_id}/activate")
 def activate_api_key(key_id: str):
     try:
         api_keys().activate(key_id)
