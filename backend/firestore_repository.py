@@ -141,7 +141,43 @@ class FirestoreRepository:
         return {"place_id": place_id, "sent": sent, "sent_at": sent_at}
 
     def mark_sent(self, place_id: str) -> dict[str, str | bool]:
-        return self.set_sent_status(place_id, True)
+        """Claim a lead before opening WhatsApp.
+
+        The transaction makes this operation safe when two dashboard sessions
+        have the same queue open: only the first session can claim the lead.
+        """
+        reference = self.collection.document(place_id)
+        now = datetime.now(ZoneInfo("America/Sao_Paulo"))
+        sent_at = now.strftime("%d/%m/%Y %H:%M")
+        sent_on = now.date().isoformat()
+
+        @firestore.transactional
+        def claim(transaction):
+            snapshot = reference.get(transaction=transaction)
+            if not snapshot.exists:
+                raise KeyError("Lead não encontrado no banco de dados.")
+            data = snapshot.to_dict() or {}
+            if data.get("sent"):
+                return {
+                    "place_id": place_id,
+                    "sent": True,
+                    "sent_at": data.get("sent_at", ""),
+                    "already_sent": True,
+                }
+            transaction.update(reference, {
+                "sent": True,
+                "sent_at": sent_at,
+                "sent_on": sent_on,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            return {
+                "place_id": place_id,
+                "sent": True,
+                "sent_at": sent_at,
+                "already_sent": False,
+            }
+
+        return claim(firestore.client().transaction())
 
     def archive(self, place_id: str) -> None:
         reference = self.collection.document(place_id)

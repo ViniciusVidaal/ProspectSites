@@ -312,14 +312,14 @@ function App() {
   const visible = useMemo(
     () => leads
       .filter((lead) => !lead.archived)
+      .filter((lead) => !lead.sent && !leadActions[lead.place_id])
       .filter((lead) => dateFilter === "all" || lead.date === today)
       .sort((a, b) =>
-        Number(a.sent) - Number(b.sent)
-        || Number(b.review_count || 0) - Number(a.review_count || 0)
+        Number(b.review_count || 0) - Number(a.review_count || 0)
         || Number(b.rating || 0) - Number(a.rating || 0)
         || a.company_name.localeCompare(b.company_name, "pt-BR")
       ),
-    [leads, dateFilter, today]
+    [leads, leadActions, dateFilter, today]
   );
   const sentCount = leads.filter((lead) => lead.sent && !lead.archived).length;
   const busy = job && !["completed", "failed"].includes(job.status);
@@ -385,6 +385,15 @@ function App() {
     try {
       const updated = await api(`/api/leads/${encodeURIComponent(placeId)}/sent`, { method: "POST", keepalive: true });
       setLeads((items) => items.map((lead) => lead.place_id === placeId ? { ...lead, ...updated } : lead));
+      if (updated.already_sent) {
+        setStats((current) => ({
+          ...current,
+          sent: Math.max(0, Number(current.sent || 0) - 1),
+          sent_today: Math.max(0, Number(current.sent_today || 0) - 1),
+        }));
+        setNotice("Este lead já havia sido enviado em outra sessão e não será aberto novamente.");
+        return false;
+      }
       return true;
     } catch (error) {
       setLeads((items) => items.map((lead) =>
@@ -404,6 +413,22 @@ function App() {
         return next;
       });
     }
+  };
+
+  const openLeadContact = async (event, lead, href) => {
+    event.preventDefault();
+    if (!href || leadActions[lead.place_id] || lead.sent) return;
+    const contactWindow = window.open("about:blank", "_blank");
+    if (!contactWindow) {
+      setNotice("O navegador bloqueou a abertura do contato. Permita pop-ups para este site e tente novamente.");
+      return;
+    }
+    const recorded = await markSent(lead.place_id);
+    if (!recorded) {
+      contactWindow.close();
+      return;
+    }
+    contactWindow.location.replace(href);
   };
 
   const changeSentStatus = async (lead, sent) => {
@@ -535,7 +560,7 @@ function App() {
     advanceDispatch({ queue, index: 0, sentInBatch: 0, status: "ready", nextAt: 0 }, whatsappWindow);
   };
 
-  const advanceDispatch = (session = dispatch, targetWindow = dispatchWindowRef.current) => {
+  const advanceDispatch = async (session = dispatch, targetWindow = dispatchWindowRef.current) => {
     if (!session || session.index >= session.queue.length) return;
     if (!targetWindow || targetWindow.closed) {
       setNotice("A janela do WhatsApp Web foi fechada. Inicie uma nova sessão.");
@@ -543,8 +568,12 @@ function App() {
       return;
     }
     const lead = session.queue[session.index];
+    const recorded = await markSent(lead.place_id);
+    if (!recorded) {
+      setDispatch({ ...session, status: "paused", pausedRemaining: 0 });
+      return;
+    }
     targetWindow.location.href = whatsappHref(lead);
-    markSent(lead.place_id);
     const nextIndex = session.index + 1;
     const nextBatchCount = session.sentInBatch + 1;
     if (nextIndex >= session.queue.length) {
@@ -648,7 +677,7 @@ function App() {
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>
                 <td><button className={`status-toggle ${lead.sent ? "sent-badge" : "pending-badge"}`} disabled={Boolean(leadActions[lead.place_id])} onClick={() => changeSentStatus(lead, !lead.sent)} title={lead.sent ? "Alterar manualmente para pendente" : "Alterar manualmente para enviado"}>{leadActions[lead.place_id] === "status" ? <LoaderCircle className="spin" size={12}/> : lead.sent ? <><Check size={12}/>Enviado</> : <>Pendente</>}</button>{lead.sent_at && <small>{lead.sent_at}</small>}</td>
-                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className={`whatsapp-action ${lead.sent ? "sent" : ""}`} href={whatsappHref(lead)} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className={`instagram-action ${lead.sent ? "sent" : ""}`} href={lead.current_site} target="_blank" rel="noreferrer" onClick={() => markSent(lead.place_id)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : lead.sent ? "Abrir novamente" : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Excluir do painel">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className="whatsapp-action" href={whatsappHref(lead)} onClick={(event) => openLeadContact(event, lead, whatsappHref(lead))}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className="instagram-action" href={lead.current_site} onClick={(event) => openLeadContact(event, lead, lead.current_site)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Excluir do painel">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
               </tr>)}</tbody>
             </table>
             {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}
