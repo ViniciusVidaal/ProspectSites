@@ -707,8 +707,8 @@ function App() {
             <table className="history-table"><thead><tr><th>Coletado em</th><th>Empresa</th><th>Contato</th><th>Avaliações</th><th>Localização</th><th>Site atual</th><th>Mensagem</th><th>Arquivamento</th></tr></thead>
               <tbody>{historyLeads.map((lead) => <tr key={lead.place_id} className={lead.sent ? "sent-row" : ""}>
                 <td><strong>{lead.date}</strong>{lead.sent_at && <small>Enviado: {lead.sent_at}</small>}</td>
-                <td><strong>{lead.company_name}</strong><small>{lead.cnpj_captured ? "CNPJ capturado" : "CNPJ não encontrado"}</small></td>
-                <td>{lead.phone || lead.cnpj_phone || <span className="muted">Não informado</span>}</td>
+                <td><strong>{lead.company_name}</strong></td>
+                <td>{lead.phone || <span className="muted">Não informado</span>}</td>
                 <td><span className="rating"><Star size={13}/>{Number(lead.rating || 0).toFixed(1)} <b>({lead.review_count})</b></span></td>
                 <td>{[lead.city, lead.state].filter(Boolean).join(" · ") || lead.address || <span className="muted">Não informado</span>}</td>
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform || "Abrir site"}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>

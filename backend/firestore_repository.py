@@ -15,7 +15,7 @@ from .models import Lead
 LEAD_FIELDS = (
     "date", "company_name", "phone", "whatsapp_link", "current_site",
     "site_platform", "review_count", "rating", "maps_link", "place_id",
-    "sent", "sent_at", "archived", "cnpj", "cnpj_captured", "cnpj_phone",
+    "sent", "sent_at", "archived",
     "address", "city", "state",
 )
 
@@ -34,6 +34,8 @@ def collected_on(date_value: str) -> str:
 
 class FirestoreRepository:
     collection_name = "leads"
+    blocklist_collection_name = "archived_lead_ids"
+    migration_collection_name = "system_migrations"
 
     def __init__(self, settings: Settings):
         if not firebase_admin._apps:
@@ -41,6 +43,12 @@ class FirestoreRepository:
                 credentials.Certificate(settings.firebase_service_account_info)
             )
         self.collection = firestore.client().collection(self.collection_name)
+        self.blocklist = firestore.client().collection(self.blocklist_collection_name)
+        self.migrations = firestore.client().collection(self.migration_collection_name)
+
+    @staticmethod
+    def _blocklist_document(lead: Lead) -> dict[str, str]:
+        return {"place_id": lead.place_id, "company_name": lead.company_name}
 
     def _document(self, lead: Lead) -> dict:
         data = {field: getattr(lead, field) for field in LEAD_FIELDS}
@@ -58,8 +66,11 @@ class FirestoreRepository:
         return Lead(**{field: data.get(field, "") for field in LEAD_FIELDS})
 
     def count(self) -> int:
-        aggregate = self.collection.count().get()
-        return int(aggregate[0][0].value) if aggregate else 0
+        def aggregate_count(reference) -> int:
+            aggregate = reference.count().get()
+            return int(aggregate[0][0].value) if aggregate else 0
+
+        return aggregate_count(self.collection) + aggregate_count(self.blocklist)
 
     def list(
         self,
@@ -121,7 +132,12 @@ class FirestoreRepository:
         if not unique:
             return []
         references = [self.collection.document(place_id) for place_id in unique]
-        existing = {snapshot.id for snapshot in firestore.client().get_all(references) if snapshot.exists}
+        blocked_references = [self.blocklist.document(place_id) for place_id in unique]
+        existing = {
+            snapshot.id
+            for snapshot in firestore.client().get_all(references + blocked_references)
+            if snapshot.exists
+        }
         fresh = [lead for place_id, lead in unique.items() if place_id not in existing]
         if not fresh:
             return []
@@ -193,69 +209,65 @@ class FirestoreRepository:
             raise KeyError("Lead não encontrado no banco de dados.")
         lead = self._lead(snapshot)
         batch = firestore.client().batch()
-        batch.update(reference, {
-            "archived": True,
-            "archive_reason": "manual_delete",
-            "archived_at": firestore.SERVER_TIMESTAMP,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-        batch.set(
-            firestore.client().collection("lead_deletion_history").document(place_id),
-            {
-                "place_id": place_id,
-                "company_name": lead.company_name,
-                "phone": lead.phone,
-                "date": lead.date,
-                "deleted_at": firestore.SERVER_TIMESTAMP,
-                "restored_at": None,
-            },
-        )
+        batch.set(self.blocklist.document(place_id), self._blocklist_document(lead))
+        batch.delete(reference)
         batch.commit()
 
     def restore(self, place_id: str) -> None:
-        reference = self.collection.document(place_id)
-        if not reference.get().exists:
-            raise KeyError("Lead não encontrado no banco de dados.")
-        batch = firestore.client().batch()
-        batch.update(reference, {
-            "archived": False,
-            "archive_reason": "",
-            "archived_at": None,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-        batch.set(
-            firestore.client().collection("lead_deletion_history").document(place_id),
-            {"restored_at": firestore.SERVER_TIMESTAMP},
-            merge=True,
-        )
-        batch.commit()
+        raise RuntimeError("Archived leads are retained only as a blocklist and cannot be restored.")
 
     def deletion_history(self) -> list[dict]:
-        items = []
-        for snapshot in firestore.client().collection("lead_deletion_history").stream():
-            data = snapshot.to_dict() or {}
-            items.append({
-                "place_id": data.get("place_id", snapshot.id),
-                "company_name": data.get("company_name", "Empresa sem nome"),
-                "phone": data.get("phone", ""),
-                "date": data.get("date", ""),
-                "deleted_at": data.get("deleted_at"),
-                "restored_at": data.get("restored_at"),
-            })
-        return sorted(items, key=lambda item: str(item.get("deleted_at") or ""), reverse=True)
+        return []
 
     def archive_many(self, place_ids: list[str]) -> int:
         requested = list(dict.fromkeys(place_ids))
         references = [self.collection.document(place_id) for place_id in requested]
         snapshots = firestore.client().get_all(references)
-        existing = [snapshot.reference for snapshot in snapshots if snapshot.exists]
+        existing = [snapshot for snapshot in snapshots if snapshot.exists]
         if not existing:
             return 0
-        batch = firestore.client().batch()
-        for reference in existing:
-            batch.update(reference, {"archived": True, "updated_at": firestore.SERVER_TIMESTAMP})
-        batch.commit()
+        for start in range(0, len(existing), 250):
+            batch = firestore.client().batch()
+            for snapshot in existing[start:start + 250]:
+                lead = self._lead(snapshot)
+                batch.set(self.blocklist.document(lead.place_id), self._blocklist_document(lead))
+                batch.delete(snapshot.reference)
+            batch.commit()
         return len(existing)
+
+    def compact_legacy_archived_leads(self) -> int:
+        """One-time migration to records with only Google Place ID and company name."""
+        marker = self.migrations.document("archive_blocklist_v1")
+        if marker.get().exists:
+            return 0
+        archived = list(self.collection.where("archived", "==", True).stream())
+        for start in range(0, len(archived), 250):
+            batch = firestore.client().batch()
+            for snapshot in archived[start:start + 250]:
+                lead = self._lead(snapshot)
+                batch.set(self.blocklist.document(lead.place_id), self._blocklist_document(lead))
+                batch.delete(snapshot.reference)
+            batch.commit()
+
+        history = list(firestore.client().collection("lead_deletion_history").stream())
+        for start in range(0, len(history), 500):
+            batch = firestore.client().batch()
+            for snapshot in history[start:start + 500]:
+                batch.delete(snapshot.reference)
+            batch.commit()
+
+        active = list(self.collection.where("archived", "==", False).stream())
+        for start in range(0, len(active), 500):
+            batch = firestore.client().batch()
+            for snapshot in active[start:start + 500]:
+                batch.update(snapshot.reference, {
+                    "cnpj": firestore.DELETE_FIELD,
+                    "cnpj_captured": firestore.DELETE_FIELD,
+                    "cnpj_phone": firestore.DELETE_FIELD,
+                })
+            batch.commit()
+        marker.set({"completed": True})
+        return len(archived)
 
     def stats(self) -> dict[str, int]:
         def count(reference) -> int:
@@ -264,9 +276,9 @@ class FirestoreRepository:
 
         today = datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
         return {
-            "total": count(self.collection),
+            "total": count(self.collection) + count(self.blocklist),
             "active": count(self.collection.where("archived", "==", False)),
             "sent": count(self.collection.where("sent", "==", True)),
             "sent_today": count(self.collection.where("sent_on", "==", today)),
-            "archived": count(self.collection.where("archived", "==", True)),
+            "archived": count(self.blocklist),
         }

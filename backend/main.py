@@ -303,6 +303,7 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
 async def migrate_legacy_leads() -> None:
     try:
         migrate_legacy_sheet_if_needed()
+        repository().compact_legacy_archived_leads()
     except Exception as exc:
         # The app remains online for new research if the legacy source is unavailable.
         print(f"Migração inicial da planilha não concluída: {exc}")
