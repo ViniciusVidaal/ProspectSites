@@ -109,7 +109,7 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const dispatchWindowRef = useRef(null);
 
-  const loadLeads = async ({ silent = false, retries = 5 } = {}) => {
+  const loadLeads = async ({ silent = false, retries = 1 } = {}) => {
     let lastError;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
@@ -130,6 +130,9 @@ function App() {
         return;
       } catch (error) {
         lastError = error;
+        // Retrying a Firebase quota response only consumes more reads and does
+        // not make the dashboard more current.
+        if (error.status === 429) break;
         if (attempt < retries) await wait(Math.min(2000 + attempt * 1500, 8000));
       }
     }
@@ -146,12 +149,10 @@ function App() {
     loadLeads({ silent: leads.length > 0 });
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    const interval = window.setInterval(refresh, 30000);
 
     return () => {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.clearInterval(interval);
     };
   }, []);
 
