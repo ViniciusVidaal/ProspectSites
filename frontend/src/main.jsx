@@ -75,6 +75,7 @@ function App() {
     () => localStorage.getItem(MESSAGE_CACHE) ?? DEFAULT_MESSAGE
   );
   const [messageDraft, setMessageDraft] = useState(message);
+  const [messageSaving, setMessageSaving] = useState(false);
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(() => !localStorage.getItem(LEADS_CACHE));
@@ -142,13 +143,30 @@ function App() {
     setLoading(false);
   };
 
+  const loadMessageTemplate = async ({ silent = true } = {}) => {
+    try {
+      const result = await api("/api/settings/message-template");
+      const sharedMessage = String(result.message || "").trim();
+      if (!sharedMessage) return;
+      setMessage(sharedMessage);
+      setMessageDraft(sharedMessage);
+      localStorage.setItem(MESSAGE_CACHE, sharedMessage);
+    } catch (error) {
+      if (!silent) setNotice(error.message);
+    }
+  };
+
   useEffect(() => {
-    const refresh = () => loadLeads({ silent: true, retries: 1 });
+    const refresh = () => {
+      loadLeads({ silent: true, retries: 1 });
+      loadMessageTemplate();
+    };
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") refresh();
     };
 
     loadLeads({ silent: leads.length > 0, refreshStats: true });
+    loadMessageTemplate();
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
@@ -473,12 +491,25 @@ function App() {
     }
   };
 
-  const saveMessage = () => {
+  const saveMessage = async () => {
     const normalized = messageDraft.trim();
     if (!normalized) return setNotice("A mensagem personalizada não pode ficar vazia.");
-    setMessage(normalized);
-    setMessageDraft(normalized);
-    localStorage.setItem(MESSAGE_CACHE, normalized);
+    setMessageSaving(true);
+    try {
+      const result = await api("/api/settings/message-template", {
+        method: "PUT",
+        body: JSON.stringify({ message: normalized }),
+      });
+      const savedMessage = String(result.message || normalized);
+      setMessage(savedMessage);
+      setMessageDraft(savedMessage);
+      localStorage.setItem(MESSAGE_CACHE, savedMessage);
+      setNotice("Mensagem salva e sincronizada entre dispositivos.");
+    } catch (error) {
+      setNotice(`Não foi possível salvar a mensagem: ${error.message}`);
+    } finally {
+      setMessageSaving(false);
+    }
   };
 
   const deleteLead = async (lead) => {
@@ -623,7 +654,7 @@ function App() {
 
   return (
     <main className={`app-shell ${sidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
-      <nav className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`} aria-label="Navegação principal"><a className="brand" href="#" onClick={() => chooseView("prospecting")}><span><Radar size={20}/></span>Prospect Sites</a><div className="sidebar-links"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => chooseView("prospecting")} title="Prospectar"><Radar size={17}/>Prospectar</button><button className={activeView === "leads" ? "active" : ""} onClick={() => chooseView("leads")} title="Leads"><Users size={17}/>Leads</button><button onClick={() => { setMessageDraft(message); setMessageOpen(true); setSidebarOpen(false); }} title="Mensagem"><MessageCircle size={17}/>Mensagem</button><button className={activeView === "history" ? "active" : ""} onClick={() => chooseView("history")} title="Histórico"><History size={17}/>Histórico</button><button className={activeView === "settings" ? "active" : ""} onClick={() => chooseView("settings")} title="Configurações"><Settings size={17}/>Configurações</button></div></nav>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
+      <nav className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`} aria-label="Navegação principal"><a className="brand" href="#" onClick={() => chooseView("prospecting")}><span><Radar size={20}/></span>Prospect Sites</a><div className="sidebar-links"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => chooseView("prospecting")} title="Prospectar"><Radar size={17}/>Prospectar</button><button onClick={() => { setMessageDraft(message); setMessageOpen(true); setSidebarOpen(false); }} title="Mensagem"><MessageCircle size={17}/>Mensagem</button><button className={activeView === "settings" ? "active" : ""} onClick={() => chooseView("settings")} title="Configurações"><Settings size={17}/>Configurações</button></div></nav>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
       <div className="app-content"><header className="topbar"><button className="menu-toggle" onClick={toggleSidebar} aria-label={sidebarCollapsed ? "Abrir menu" : "Recolher menu"}><Menu size={20}/></button><div className="mobile-brand">Prospect Sites</div><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
 
       {activeView === "prospecting" && <>
@@ -669,7 +700,7 @@ function App() {
         <div className="leads-panel">
           <div className="panel-head">
             <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Fila com até 100 contatos pendentes por vez.</p></div></div>
-            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={() => loadLeads({ refreshStats: true })} title="Carregar a fila atual de leads pendentes"><RotateCcw size={14}/>Atualizar fila</button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
+            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={() => loadLeads({ refreshStats: true })} title="Carregar a fila atual de leads pendentes"><RotateCcw size={14}/>Atualizar fila</button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Mover enviados para a lista mínima de bloqueio"><Check size={14}/>Arquivar enviados</button></div>
           </div>
           <div className="table-wrap">
             <table><thead><tr><th>Posição</th><th>Empresa</th><th>Avaliações</th><th>Site atual</th><th>Contato Google</th><th>Status</th><th>Ações</th></tr></thead>
@@ -734,9 +765,8 @@ function App() {
         <aside className="message-modal" role="dialog" aria-modal="true" aria-label="Configuração da mensagem">
           <button className="modal-close" onClick={() => setMessageOpen(false)} title="Fechar"><X size={19}/></button>
           <div className="panel-title"><span><MessageCircle size={19}/></span><div><h2>Mensagem</h2><p>Texto preenchido no WhatsApp.</p></div></div>
-          <div className="send-mode"><button className={sendMode === "manual" ? "active" : ""} onClick={() => setSendMode("manual")}>Manual</button><button className={sendMode === "assisted" ? "active" : ""} onClick={() => setSendMode("assisted")}>Sessão assistida</button></div>
           <label className="message-label"><span>Mensagem de abordagem</span><textarea value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} maxLength="3000"/><small className="template-tip">Variáveis: <b>[Empresa]</b>, <b>[AVALIAÇÕES]</b> e <b>[NOTA]</b>.</small></label>
-          <div className="message-save-row"><span>{messageDraft === message ? "Mensagem salva" : "Alterações ainda não salvas"}</span><button onClick={saveMessage} disabled={!messageDraft.trim() || messageDraft === message}><Check size={15}/>Salvar mensagem</button></div>
+          <div className="message-save-row"><span>{messageDraft === message ? "Mensagem salva" : "Alterações ainda não salvas"}</span><button onClick={saveMessage} disabled={messageSaving || !messageDraft.trim() || messageDraft === message}><Check size={15}/>{messageSaving ? "Salvando..." : "Salvar mensagem"}</button></div>
           {sendMode === "manual" ? <div className="manual-note"><MessageCircle size={16}/><p>Use o botão “Abrir WhatsApp” de cada lead. A mensagem será preenchida e o envio continuará sob sua confirmação.</p></div> : <div className="dispatch-box">
             <div className="dispatch-grid">
               <label><span>Quantidade nesta sessão</span><input type="number" min="1" max="500" value={sessionAmount} onChange={(event) => setSessionAmount(event.target.value)}/></label>

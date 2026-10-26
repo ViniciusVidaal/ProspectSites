@@ -36,6 +36,7 @@ class FirestoreRepository:
     collection_name = "leads"
     blocklist_collection_name = "archived_lead_ids"
     migration_collection_name = "system_migrations"
+    settings_collection_name = "app_settings"
 
     def __init__(self, settings: Settings):
         if not firebase_admin._apps:
@@ -45,10 +46,22 @@ class FirestoreRepository:
         self.collection = firestore.client().collection(self.collection_name)
         self.blocklist = firestore.client().collection(self.blocklist_collection_name)
         self.migrations = firestore.client().collection(self.migration_collection_name)
+        self.settings = firestore.client().collection(self.settings_collection_name)
 
     @staticmethod
     def _blocklist_document(lead: Lead) -> dict[str, str]:
         return {"place_id": lead.place_id, "company_name": lead.company_name}
+
+    def message_template(self) -> str:
+        snapshot = self.settings.document("message_template").get()
+        return str((snapshot.to_dict() or {}).get("message", "")) if snapshot.exists else ""
+
+    def save_message_template(self, message: str) -> str:
+        clean_message = message.strip()
+        if not clean_message:
+            raise ValueError("A mensagem não pode ficar vazia.")
+        self.settings.document("message_template").set({"message": clean_message})
+        return clean_message
 
     def _document(self, lead: Lead) -> dict:
         data = {field: getattr(lead, field) for field in LEAD_FIELDS}

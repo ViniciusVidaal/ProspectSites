@@ -60,6 +60,10 @@ class SentStatusRequest(BaseModel):
     sent: bool
 
 
+class MessageTemplateRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=3000)
+
+
 class ApiKeyCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     api_key: str = Field(min_length=20, max_length=300)

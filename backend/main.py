@@ -5,7 +5,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .models import ApiKeyCreateRequest, ArchiveRequest, Job, SearchRequest, SentStatusRequest
+from .models import ApiKeyCreateRequest, ArchiveRequest, Job, MessageTemplateRequest, SearchRequest, SentStatusRequest
 from .api_key_repository import ApiKeyRepository
 from .firestore_repository import FirestoreRepository
 from .places import PlacesQuotaExceeded, PlacesRequestFailed, search_eligible_profiles
@@ -20,7 +20,7 @@ try:
         CORSMiddleware,
         allow_origins=_settings.frontend_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["*"],
     )
 except RuntimeError:
@@ -112,6 +112,24 @@ def lead_stats():
         return repository().stats()
     except Exception as exc:
         raise firestore_http_error("calcular metricas", exc) from exc
+
+
+@app.get("/api/settings/message-template")
+def get_message_template():
+    try:
+        return {"message": repository().message_template()}
+    except Exception as exc:
+        raise firestore_http_error("carregar a mensagem", exc) from exc
+
+
+@app.put("/api/settings/message-template")
+def save_message_template(request: MessageTemplateRequest):
+    try:
+        return {"message": repository().save_message_template(request.message)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise firestore_http_error("salvar a mensagem", exc) from exc
 
 
 @app.get("/api/leads/history")
