@@ -91,7 +91,7 @@ def health():
 
 
 @app.get("/api/leads")
-def list_leads(include_archived: bool = False, limit: int = 100):
+def list_leads(include_archived: bool = False, limit: int = 1000):
     try:
         leads = repository().list(include_archived=include_archived, limit=limit)
         return [

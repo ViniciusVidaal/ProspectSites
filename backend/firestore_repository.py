@@ -62,12 +62,15 @@ class FirestoreRepository:
         return int(aggregate[0][0].value) if aggregate else 0
 
     def list(self, include_archived: bool = False, limit: int | None = None) -> list[Lead]:
-        reference = self.collection.order_by("collected_on", direction=firestore.Query.DESCENDING)
-        if limit:
-            reference = reference.limit(max(1, min(limit, 100)))
-        leads = [self._lead(item) for item in reference.stream()]
+        # Filter in Firestore *before* applying a limit.  Filtering the first
+        # page in Python meant that a recent run of archived leads could make
+        # the dashboard look empty even though active leads still existed.
+        reference = self.collection
         if not include_archived:
-            leads = [lead for lead in leads if not lead.archived]
+            reference = reference.where("archived", "==", False)
+        if limit:
+            reference = reference.limit(max(1, min(limit, 1000)))
+        leads = [self._lead(item) for item in reference.stream()]
         return sorted(
             leads,
             key=lambda lead: (-lead.review_count, -lead.rating, lead.company_name.casefold()),

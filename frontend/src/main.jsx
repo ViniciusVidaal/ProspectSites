@@ -113,7 +113,9 @@ function App() {
     let lastError;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
-        const leadItems = await api("/api/leads?include_archived=false&limit=100");
+        // The API is the shared source of truth.  localStorage is retained only
+        // as a temporary offline fallback and must never cap the shared base.
+        const leadItems = await api("/api/leads?include_archived=false&limit=1000");
         setLeads(leadItems);
         localStorage.setItem(LEADS_CACHE, JSON.stringify(leadItems));
         try {
@@ -135,7 +137,23 @@ function App() {
     setLoading(false);
   };
 
-  useEffect(() => { loadLeads({ silent: leads.length > 0 }); }, []);
+  useEffect(() => {
+    const refresh = () => loadLeads({ silent: true, retries: 1 });
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    loadLeads({ silent: leads.length > 0 });
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    const interval = window.setInterval(refresh, 30000);
+
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const isoDate = (date) => date.toISOString().slice(0, 10);
   const formatDate = (value) => {
