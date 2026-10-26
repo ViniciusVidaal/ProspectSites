@@ -79,6 +79,7 @@ function App() {
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(() => !localStorage.getItem(LEADS_CACHE));
+  const [dataUnavailable, setDataUnavailable] = useState(false);
   const [stats, setStats] = useState(() => readCache(STATS_CACHE, { archived: 0, sent: 0, sent_today: 0 }));
   const [sendMode, setSendMode] = useState("manual");
   const [sessionAmount, setSessionAmount] = useState(5);
@@ -129,6 +130,7 @@ function App() {
           }
         }
         setNotice("");
+        setDataUnavailable(false);
         setLoading(false);
         return;
       } catch (error) {
@@ -140,6 +142,7 @@ function App() {
       }
     }
     if (!silent) setNotice(lastError?.message || "Não foi possível atualizar os leads.");
+    setDataUnavailable(true);
     setLoading(false);
   };
 
@@ -659,10 +662,10 @@ function App() {
 
       {activeView === "prospecting" && <>
       <section className="metrics-row">
-        <article><span><Users size={18}/></span><div><strong>{stats.active ?? leads.filter((lead) => !lead.archived).length}</strong><small>Leads qualificados</small></div></article>
-        <article><span><MessageCircle size={18}/></span><div><strong>{stats.sent || 0}</strong><small>Mensagens enviadas</small></div></article>
-        <article><span><CalendarDays size={18}/></span><div><strong>{stats.sent_today || 0}</strong><small>Mensagens enviadas hoje</small></div></article>
-        <article><span><ArchiveRestore size={18}/></span><div><strong>{stats.archived || 0}</strong><small>Leads arquivados</small></div></article>
+        <article><span><Users size={18}/></span><div><strong>{dataUnavailable ? "—" : (stats.active ?? leads.filter((lead) => !lead.archived).length)}</strong><small>Leads qualificados</small></div></article>
+        <article><span><MessageCircle size={18}/></span><div><strong>{dataUnavailable ? "—" : (stats.sent || 0)}</strong><small>Mensagens enviadas</small></div></article>
+        <article><span><CalendarDays size={18}/></span><div><strong>{dataUnavailable ? "—" : (stats.sent_today || 0)}</strong><small>Mensagens enviadas hoje</small></div></article>
+        <article><span><ArchiveRestore size={18}/></span><div><strong>{dataUnavailable ? "—" : (stats.archived || 0)}</strong><small>Leads arquivados</small></div></article>
       </section>
 
       <section className="search-card">
@@ -714,7 +717,7 @@ function App() {
                 <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className="whatsapp-action" href={whatsappHref(lead)} onClick={(event) => openLeadContact(event, lead, whatsappHref(lead))}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className="instagram-action" href={lead.current_site} onClick={(event) => openLeadContact(event, lead, lead.current_site)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Excluir do painel">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
               </tr>)}</tbody>
             </table>
-            {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>Nenhum lead qualificado</strong><span>Faça uma pesquisa para alimentar sua base.</span></div>}
+            {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>{dataUnavailable ? "Base temporariamente indisponível" : "Nenhum lead qualificado"}</strong><span>{dataUnavailable ? "O Firebase atingiu o limite de leituras. Seus leads continuam salvos." : "Faça uma pesquisa para alimentar sua base."}</span></div>}
           </div>
         </div>
 
