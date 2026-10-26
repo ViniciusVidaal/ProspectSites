@@ -91,13 +91,17 @@ def health():
 
 
 @app.get("/api/leads")
-def list_leads(include_archived: bool = False, limit: int = 1000):
+def list_leads(
+    include_archived: bool = False,
+    pending_only: bool = True,
+    limit: int = 100,
+):
     try:
-        leads = repository().list(include_archived=include_archived, limit=limit)
-        return [
-            lead.model_copy(update={"sent": lead.sent or lead.archived})
-            for lead in leads
-        ]
+        return repository().list(
+            include_archived=include_archived,
+            pending_only=pending_only,
+            limit=limit,
+        )
     except Exception as exc:
         raise firestore_http_error("carregar os leads", exc) from exc
 

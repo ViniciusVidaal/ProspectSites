@@ -109,21 +109,23 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const dispatchWindowRef = useRef(null);
 
-  const loadLeads = async ({ silent = false, retries = 1 } = {}) => {
+  const loadLeads = async ({ silent = false, retries = 1, refreshStats = false } = {}) => {
     let lastError;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
         // The API is the shared source of truth.  localStorage is retained only
         // as a temporary offline fallback and must never cap the shared base.
-        const leadItems = await api("/api/leads?include_archived=false&limit=1000");
+        const leadItems = await api("/api/leads?include_archived=false&pending_only=true&limit=100");
         setLeads(leadItems);
         localStorage.setItem(LEADS_CACHE, JSON.stringify(leadItems));
-        try {
-          const metrics = await api("/api/stats");
-          setStats(metrics);
-          localStorage.setItem(STATS_CACHE, JSON.stringify(metrics));
-        } catch {
-          // Os leads já foram atualizados; a métrica será renovada na próxima tentativa.
+        if (refreshStats) {
+          try {
+            const metrics = await api("/api/stats");
+            setStats(metrics);
+            localStorage.setItem(STATS_CACHE, JSON.stringify(metrics));
+          } catch {
+            // A fila foi atualizada; as métricas serão renovadas na próxima abertura.
+          }
         }
         setNotice("");
         setLoading(false);
@@ -146,7 +148,7 @@ function App() {
       if (document.visibilityState === "visible") refresh();
     };
 
-    loadLeads({ silent: leads.length > 0 });
+    loadLeads({ silent: leads.length > 0, refreshStats: true });
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
@@ -300,7 +302,7 @@ function App() {
       try {
         const current = await api(`/api/jobs/${job.id}`);
         setJob(current);
-        if (["completed", "failed"].includes(current.status)) loadLeads();
+        if (["completed", "failed"].includes(current.status)) loadLeads({ refreshStats: true });
       } catch (error) {
         setNotice(error.message);
         setJob((current) => current ? { ...current, status: "failed", detail: error.message } : current);
@@ -666,8 +668,8 @@ function App() {
       <section className="workspace">
         <div className="leads-panel">
           <div className="panel-head">
-            <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Contatos qualificados para abordagem individual.</p></div></div>
-            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
+            <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Fila com até 100 contatos pendentes por vez.</p></div></div>
+            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={() => loadLeads({ refreshStats: true })} title="Carregar a fila atual de leads pendentes"><RotateCcw size={14}/>Atualizar fila</button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Retirar enviados do painel sem apagar da planilha"><Check size={14}/>Arquivar enviados</button><button className="archive-today" onClick={archiveToday} title="Retirar do painel sem apagar da planilha"><Archive size={14}/>Arquivar leads de hoje</button></div>
           </div>
           <div className="table-wrap">
             <table><thead><tr><th>Posição</th><th>Empresa</th><th>Avaliações</th><th>Site atual</th><th>Contato Google</th><th>Status</th><th>Ações</th></tr></thead>
