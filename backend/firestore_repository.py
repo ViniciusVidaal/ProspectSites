@@ -94,7 +94,15 @@ class FirestoreRepository:
     def _lead(snapshot) -> Lead:
         data = snapshot.to_dict() or {}
         data["place_id"] = data.get("place_id") or snapshot.id
-        return Lead(**{field: data.get(field, "") for field in LEAD_FIELDS})
+        # Preserve the model defaults for fields that do not exist in legacy
+        # Firestore documents. Filling every missing field with an empty string
+        # breaks boolean fields added after those documents were created.
+        values = {
+            field: data[field]
+            for field in LEAD_FIELDS
+            if field in data and data[field] is not None
+        }
+        return Lead(**values)
 
     def count(self) -> int:
         def aggregate_count(reference) -> int:
