@@ -41,6 +41,15 @@ class Lead(BaseModel):
     cnpj: str = Field(default="", exclude=True)
     cnpj_captured: bool = False
     cnpj_phone: str = ""
+    registry_email: str = ""
+    cnpj_confidence: str = ""
+    cnpj_status: str = ""
+    cnpj_checked: bool = False
+    cnpj_lookup_at: str = ""
+    email_sent: bool = False
+    email_sent_at: str = ""
+    email_status: str = "pending"
+    email_error: str = ""
     address: str = Field(default="", exclude=True)
     city: str = Field(default="", exclude=True)
     state: str = Field(default="", exclude=True)
@@ -56,12 +65,25 @@ class ArchiveRequest(BaseModel):
     place_ids: list[str] = Field(min_length=1, max_length=500)
 
 
+class CnpjLookupRequest(BaseModel):
+    place_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class EmailBatchRequest(BaseModel):
+    place_ids: list[str] = Field(min_length=1, max_length=100)
+
+
 class SentStatusRequest(BaseModel):
     sent: bool
 
 
 class MessageTemplateRequest(BaseModel):
     message: str = Field(min_length=1, max_length=3000)
+
+
+class EmailTemplateRequest(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+    message: str = Field(min_length=1, max_length=10000)
 
 
 class ApiKeyCreateRequest(BaseModel):

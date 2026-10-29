@@ -116,6 +116,10 @@ select:disabled { opacity: .55; cursor: not-allowed; }
 .archive-today { height: 42px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--muted); font-size: 11px; font-weight: 700; }
 .archive-today:hover { border-color: var(--accent); color: var(--accent-strong); }
 .archive-today:disabled { opacity: .45; cursor: not-allowed; }
+.cnpj-lookup-button { border-color: rgba(31, 143, 99, .35); color: #14704d; background: rgba(31, 143, 99, .08); }
+.email-batch-button { border-color: rgba(74, 102, 232, .35); color: #4055bd; background: rgba(74, 102, 232, .09); }
+.registry-email { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent-strong); }
+.email-error { color: var(--danger); }
 .message-settings { width: 42px; height: 42px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-text); }
 .message-settings span { display: none; }
 .message-settings:hover { filter: brightness(.96); transform: translateY(-1px); }
@@ -215,6 +219,11 @@ html[data-theme="dark"] .whatsapp-action.sent { background: #253329; color: #88d
 .modal-close { position: absolute; top: 18px; right: 18px; width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); color: var(--muted); }
 .modal-close:hover { color: var(--danger); border-color: var(--danger); }
 .message-label { display: block; margin-top: 22px; }
+.message-channels { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 20px; padding: 4px; border: 1px solid var(--line); border-radius: 11px; background: var(--soft); }
+.message-channels button { min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 800; }
+.message-channels button.active { color: var(--text); background: var(--panel); box-shadow: 0 3px 12px rgba(20, 40, 28, .08); }
+.email-subject-label input { width: 100%; height: 46px; padding: 0 12px; border: 1px solid var(--input-line); border-radius: 10px; outline: 0; color: var(--text); background: var(--soft); }
+.email-subject-label input:focus { border-color: var(--accent); }
 textarea { width: 100%; min-height: 260px; max-height: 50vh; padding: 13px; border: 1px solid var(--input-line); border-radius: 11px; outline: 0; resize: vertical; background: var(--soft); color: var(--text); line-height: 1.55; }
 textarea:focus { border-color: var(--accent); }
 .template-tip { display: block; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.45; }

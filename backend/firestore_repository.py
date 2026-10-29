@@ -16,7 +16,10 @@ LEAD_FIELDS = (
     "date", "company_name", "phone", "whatsapp_link", "current_site",
     "site_platform", "review_count", "rating", "maps_link", "place_id",
     "sent", "sent_at", "archived",
-    "address", "city", "state",
+    "address", "city", "state", "cnpj_captured", "cnpj_phone",
+    "registry_email", "cnpj_confidence", "cnpj_status", "cnpj_checked",
+    "cnpj_lookup_at",
+    "email_sent", "email_sent_at", "email_status", "email_error",
 )
 
 
@@ -62,6 +65,21 @@ class FirestoreRepository:
             raise ValueError("A mensagem não pode ficar vazia.")
         self.settings.document("message_template").set({"message": clean_message})
         return clean_message
+
+    def email_template(self) -> dict[str, str]:
+        snapshot = self.settings.document("email_template").get()
+        data = snapshot.to_dict() or {}
+        return {
+            "subject": str(data.get("subject", "")),
+            "message": str(data.get("message", "")),
+        }
+
+    def save_email_template(self, subject: str, message: str) -> dict[str, str]:
+        template = {"subject": subject.strip(), "message": message.strip()}
+        if not template["subject"] or not template["message"]:
+            raise ValueError("O assunto e a mensagem do e-mail são obrigatórios.")
+        self.settings.document("email_template").set(template)
+        return template
 
     def _document(self, lead: Lead) -> dict:
         data = {field: getattr(lead, field) for field in LEAD_FIELDS}
@@ -159,6 +177,81 @@ class FirestoreRepository:
             batch.set(self.collection.document(lead.place_id), self._document(lead))
         batch.commit()
         return fresh
+
+    def get_active_pending(self, place_ids: list[str]) -> list[Lead]:
+        requested = list(dict.fromkeys(place_ids))[:100]
+        snapshots = firestore.client().get_all(
+            [self.collection.document(place_id) for place_id in requested]
+        )
+        found = {
+            snapshot.id: self._lead(snapshot)
+            for snapshot in snapshots
+            if snapshot.exists
+            and not (snapshot.to_dict() or {}).get("archived", False)
+            and not (snapshot.to_dict() or {}).get("sent", False)
+        }
+        return [found[place_id] for place_id in requested if place_id in found]
+
+    def get_email_leads(self, place_ids: list[str]) -> list[Lead]:
+        requested = list(dict.fromkeys(place_ids))[:100]
+        snapshots = firestore.client().get_all(
+            [self.collection.document(place_id) for place_id in requested]
+        )
+        found = {
+            snapshot.id: self._lead(snapshot)
+            for snapshot in snapshots
+            if snapshot.exists and not (snapshot.to_dict() or {}).get("archived", False)
+        }
+        return [found[place_id] for place_id in requested if place_id in found]
+
+    def claim_email(self, place_id: str) -> bool:
+        reference = self.collection.document(place_id)
+
+        @firestore.transactional
+        def claim(transaction):
+            snapshot = reference.get(transaction=transaction)
+            if not snapshot.exists:
+                return False
+            data = snapshot.to_dict() or {}
+            if data.get("email_sent") or data.get("email_status") == "sending":
+                return False
+            transaction.update(reference, {
+                "email_status": "sending",
+                "email_error": "",
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            return True
+
+        return bool(claim(firestore.client().transaction()))
+
+    def finish_email(self, place_id: str, *, sent: bool, sent_at: str = "", error: str = "") -> None:
+        self.collection.document(place_id).update({
+            "email_sent": sent,
+            "email_sent_at": sent_at if sent else "",
+            "email_status": "sent" if sent else "failed",
+            "email_error": "" if sent else error[:500],
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
+
+    def save_cnpj_contacts(
+        self,
+        place_id: str,
+        *,
+        phone: str = "",
+        email: str = "",
+        confidence: str,
+        status: str,
+        checked_at: str,
+    ) -> None:
+        self.collection.document(place_id).update({
+            "cnpj_phone": phone,
+            "registry_email": email,
+            "cnpj_confidence": confidence,
+            "cnpj_status": status,
+            "cnpj_checked": True,
+            "cnpj_lookup_at": checked_at,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
 
     def set_sent_status(self, place_id: str, sent: bool) -> dict[str, str | bool]:
         reference = self.collection.document(place_id)
@@ -277,6 +370,11 @@ class FirestoreRepository:
                     "cnpj": firestore.DELETE_FIELD,
                     "cnpj_captured": firestore.DELETE_FIELD,
                     "cnpj_phone": firestore.DELETE_FIELD,
+                    "registry_email": firestore.DELETE_FIELD,
+                    "cnpj_confidence": firestore.DELETE_FIELD,
+                    "cnpj_status": firestore.DELETE_FIELD,
+                    "cnpj_checked": firestore.DELETE_FIELD,
+                    "cnpj_lookup_at": firestore.DELETE_FIELD,
                 })
             batch.commit()
         marker.set({"completed": True})

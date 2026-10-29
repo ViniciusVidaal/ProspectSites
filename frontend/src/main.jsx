@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
   Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
-  Search, Star, Sun, Trash2, Users, X, ListFilter, Settings, KeyRound, AlertTriangle, Menu, History, Undo2
+  Search, Star, Sun, Trash2, Users, X, ListFilter, Settings, KeyRound, AlertTriangle, Menu, History, Undo2, Mail
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
 import "./styles.css";
@@ -12,6 +12,8 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const LEADS_CACHE = "prospect-leads-cache";
 const STATS_CACHE = "prospect-stats-cache";
 const MESSAGE_CACHE = "prospect-message-template";
+const EMAIL_SUBJECT_CACHE = "prospect-email-subject";
+const EMAIL_MESSAGE_CACHE = "prospect-email-template";
 const DEFAULT_MESSAGE = `Opa, **[Empresa]**. Estava analisando o perfil de vocês no Google e vi que vocês já conquistaram **[AVALIAÇÕES] avaliações** e mantêm uma nota de **[NOTA]⭐** no Google. Mas notei um problema grave: vocês estão perdendo clientes todos os dias por não ter um site oficial.
 
 Muita gente acha a empresa no mapa, procura o site pra confirmar a credibilidade e, como não acha, fecha com a concorrência.
@@ -19,6 +21,12 @@ Muita gente acha a empresa no mapa, procura o site pra confirmar a credibilidade
 Eu resolvo exatamente isso. Crio sites profissionais focados em vendas por apenas R$ 497 (pagamento único), e ainda libero 1 ano de hospedagem grátis pra vocês.
 
 Posso montar uma prévia do site da **[Empresa]** sem compromisso pra você ver na prática?`;
+const DEFAULT_EMAIL_SUBJECT = "Uma ideia para a [Empresa]";
+const DEFAULT_EMAIL_MESSAGE = `Olá, equipe da [Empresa].
+
+Encontrei a empresa de vocês no Google, com [AVALIAÇÕES] avaliações e nota [NOTA]. Gostaria de apresentar uma ideia para fortalecer a presença digital da empresa.
+
+Posso enviar uma prévia sem compromisso?`;
 
 function readCache(key, fallback) {
   try {
@@ -75,6 +83,11 @@ function App() {
     () => localStorage.getItem(MESSAGE_CACHE) ?? DEFAULT_MESSAGE
   );
   const [messageDraft, setMessageDraft] = useState(message);
+  const [emailSubject, setEmailSubject] = useState(() => localStorage.getItem(EMAIL_SUBJECT_CACHE) || DEFAULT_EMAIL_SUBJECT);
+  const [emailMessage, setEmailMessage] = useState(() => localStorage.getItem(EMAIL_MESSAGE_CACHE) || DEFAULT_EMAIL_MESSAGE);
+  const [emailSubjectDraft, setEmailSubjectDraft] = useState(emailSubject);
+  const [emailMessageDraft, setEmailMessageDraft] = useState(emailMessage);
+  const [messageChannel, setMessageChannel] = useState("whatsapp");
   const [messageSaving, setMessageSaving] = useState(false);
   const [job, setJob] = useState(null);
   const [notice, setNotice] = useState("");
@@ -110,6 +123,7 @@ function App() {
   const [deletedLeads, setDeletedLeads] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const dispatchWindowRef = useRef(null);
+  const emailBatchIdsRef = useRef([]);
 
   const loadLeads = async ({ silent = false, retries = 1, refreshStats = false } = {}) => {
     let lastError;
@@ -159,24 +173,30 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    const refresh = () => {
-      loadLeads({ silent: true, retries: 1 });
-      loadMessageTemplate();
-    };
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
+  const loadEmailTemplate = async ({ silent = true } = {}) => {
+    try {
+      const result = await api("/api/settings/email-template");
+      const subject = String(result.subject || "").trim();
+      const emailBody = String(result.message || "").trim();
+      if (subject) {
+        setEmailSubject(subject);
+        setEmailSubjectDraft(subject);
+        localStorage.setItem(EMAIL_SUBJECT_CACHE, subject);
+      }
+      if (emailBody) {
+        setEmailMessage(emailBody);
+        setEmailMessageDraft(emailBody);
+        localStorage.setItem(EMAIL_MESSAGE_CACHE, emailBody);
+      }
+    } catch (error) {
+      if (!silent) setNotice(error.message);
+    }
+  };
 
+  useEffect(() => {
     loadLeads({ silent: leads.length > 0, refreshStats: true });
     loadMessageTemplate();
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
+    loadEmailTemplate();
   }, []);
 
   const isoDate = (date) => date.toISOString().slice(0, 10);
@@ -323,7 +343,18 @@ function App() {
       try {
         const current = await api(`/api/jobs/${job.id}`);
         setJob(current);
-        if (["completed", "failed"].includes(current.status)) loadLeads({ refreshStats: true });
+        if (["completed", "failed"].includes(current.status)) {
+          if (current.kind === "email_batch" && emailBatchIdsRef.current.length) {
+            const statuses = await api("/api/email/statuses", {
+              method: "POST",
+              body: JSON.stringify({ place_ids: emailBatchIdsRef.current }),
+            });
+            const byId = Object.fromEntries(statuses.map((lead) => [lead.place_id, lead]));
+            setLeads((items) => items.map((lead) => byId[lead.place_id] ? { ...lead, ...byId[lead.place_id] } : lead));
+          } else {
+            loadLeads({ refreshStats: true });
+          }
+        }
       } catch (error) {
         setNotice(error.message);
         setJob((current) => current ? { ...current, status: "failed", detail: error.message } : current);
@@ -336,10 +367,10 @@ function App() {
   const visible = useMemo(
     () => leads
       .filter((lead) => !lead.archived)
-      .filter((lead) => !lead.sent && !leadActions[lead.place_id])
       .filter((lead) => dateFilter === "all" || lead.date === today)
       .sort((a, b) =>
-        Number(b.review_count || 0) - Number(a.review_count || 0)
+        Number(a.sent) - Number(b.sent)
+        || Number(b.review_count || 0) - Number(a.review_count || 0)
         || Number(b.rating || 0) - Number(a.rating || 0)
         || a.company_name.localeCompare(b.company_name, "pt-BR")
       ),
@@ -364,6 +395,36 @@ function App() {
         }),
       }));
     } catch (error) { setNotice(error.message); }
+  };
+
+  const startCnpjLookup = async () => {
+    const placeIds = visible.filter((lead) => !lead.sent).map((lead) => lead.place_id).slice(0, 100);
+    if (!placeIds.length) return setNotice("Não há leads na fila atual para consultar.");
+    setNotice("");
+    try {
+      setJob(await api("/api/cnpj-lookup", {
+        method: "POST",
+        body: JSON.stringify({ place_ids: placeIds }),
+      }));
+    } catch (error) {
+      setNotice(error.message);
+    }
+  };
+
+  const startEmailBatch = async () => {
+    const eligible = visible.filter((lead) => lead.registry_email && !lead.email_sent).slice(0, 100);
+    if (!eligible.length) return setNotice("Não há leads pendentes com e-mail encontrado nesta fila.");
+    if (!window.confirm(`Enviar e-mail agora para ${eligible.length} lead(s)?`)) return;
+    setNotice("");
+    try {
+      emailBatchIdsRef.current = eligible.map((lead) => lead.place_id);
+      setJob(await api("/api/email/send-batch", {
+        method: "POST",
+        body: JSON.stringify({ place_ids: emailBatchIdsRef.current }),
+      }));
+    } catch (error) {
+      setNotice(error.message);
+    }
   };
 
   const whatsappHref = (lead) => {
@@ -515,6 +576,30 @@ function App() {
     }
   };
 
+  const saveEmailMessage = async () => {
+    const subject = emailSubjectDraft.trim();
+    const emailBody = emailMessageDraft.trim();
+    if (!subject || !emailBody) return setNotice("O assunto e a mensagem do e-mail são obrigatórios.");
+    setMessageSaving(true);
+    try {
+      const result = await api("/api/settings/email-template", {
+        method: "PUT",
+        body: JSON.stringify({ subject, message: emailBody }),
+      });
+      setEmailSubject(result.subject);
+      setEmailMessage(result.message);
+      setEmailSubjectDraft(result.subject);
+      setEmailMessageDraft(result.message);
+      localStorage.setItem(EMAIL_SUBJECT_CACHE, result.subject);
+      localStorage.setItem(EMAIL_MESSAGE_CACHE, result.message);
+      setNotice("Mensagem de e-mail salva e sincronizada entre dispositivos.");
+    } catch (error) {
+      setNotice(`Não foi possível salvar a mensagem de e-mail: ${error.message}`);
+    } finally {
+      setMessageSaving(false);
+    }
+  };
+
   const deleteLead = async (lead) => {
     if (!window.confirm(`Excluir ${lead.company_name} do painel? O histórico continuará protegido para evitar leads repetidos.`)) return;
     if (leadActions[lead.place_id]) return;
@@ -557,7 +642,7 @@ function App() {
         method: "POST",
         body: JSON.stringify({ place_ids: ids }),
       });
-      await loadLeads();
+      await loadLeads({ refreshStats: true });
     } catch (error) {
       setLeads(previous);
       setNotice(`Não foi possível arquivar os leads de hoje: ${error.message}`);
@@ -576,10 +661,30 @@ function App() {
         method: "POST",
         body: JSON.stringify({ place_ids: ids }),
       });
-      await loadLeads();
+      await loadLeads({ refreshStats: true });
     } catch (error) {
       setLeads(previous);
       setNotice(`Não foi possível arquivar os leads enviados: ${error.message}`);
+    }
+  };
+
+  const refreshQueue = async () => {
+    if (busy) return;
+    const sentLeads = leads.filter((lead) => lead.sent && !lead.archived);
+    setLoading(true);
+    setNotice("");
+    try {
+      if (sentLeads.length) {
+        await api("/api/leads/archive", {
+          method: "POST",
+          body: JSON.stringify({ place_ids: sentLeads.map((lead) => lead.place_id) }),
+        });
+        setLeads((items) => items.filter((lead) => !lead.sent));
+      }
+      await loadLeads({ refreshStats: true, retries: 1 });
+    } catch (error) {
+      setNotice(`Não foi possível atualizar a fila: ${error.message}`);
+      setLoading(false);
     }
   };
 
@@ -657,7 +762,7 @@ function App() {
 
   return (
     <main className={`app-shell ${sidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
-      <nav className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`} aria-label="Navegação principal"><a className="brand" href="#" onClick={() => chooseView("prospecting")}><span><Radar size={20}/></span>Prospect Sites</a><div className="sidebar-links"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => chooseView("prospecting")} title="Prospectar"><Radar size={17}/>Prospectar</button><button onClick={() => { setMessageDraft(message); setMessageOpen(true); setSidebarOpen(false); }} title="Mensagem"><MessageCircle size={17}/>Mensagem</button><button className={activeView === "settings" ? "active" : ""} onClick={() => chooseView("settings")} title="Configurações"><Settings size={17}/>Configurações</button></div></nav>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
+      <nav className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`} aria-label="Navegação principal"><a className="brand" href="#" onClick={() => chooseView("prospecting")}><span><Radar size={20}/></span>Prospect Sites</a><div className="sidebar-links"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => chooseView("prospecting")} title="Prospectar"><Radar size={17}/>Prospectar</button><button onClick={() => { setMessageDraft(message); setEmailSubjectDraft(emailSubject); setEmailMessageDraft(emailMessage); setMessageOpen(true); setSidebarOpen(false); }} title="Mensagens"><MessageCircle size={17}/>Mensagens</button><button className={activeView === "settings" ? "active" : ""} onClick={() => chooseView("settings")} title="Configurações"><Settings size={17}/>Configurações</button></div></nav>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
       <div className="app-content"><header className="topbar"><button className="menu-toggle" onClick={toggleSidebar} aria-label={sidebarCollapsed ? "Abrir menu" : "Recolher menu"}><Menu size={20}/></button><div className="mobile-brand">Prospect Sites</div><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
 
       {activeView === "prospecting" && <>
@@ -696,25 +801,25 @@ function App() {
         </form>
       </section>
 
-      {job && <div className={`job ${job.status}`}><LoaderCircle className={busy ? "spin" : ""} size={18}/><div><strong>{job.status === "completed" ? "Concluído" : job.status === "failed" ? "Atenção" : "Analisando perfis"}</strong><span>{job.detail || "Preparando pesquisa..."}</span></div></div>}
+      {job && <div className={`job ${job.status}`}><LoaderCircle className={busy ? "spin" : ""} size={18}/><div><strong>{job.status === "completed" ? "Concluído" : job.status === "failed" ? "Atenção" : job.kind === "cnpj_lookup" ? "Buscando dados cadastrais" : job.kind === "email_batch" ? "Enviando e-mails" : "Analisando perfis"}</strong><span>{job.detail || "Preparando pesquisa..."}</span></div></div>}
       {notice && <div className="notice">{notice}</div>}
 
       <section className="workspace">
         <div className="leads-panel">
           <div className="panel-head">
             <div className="panel-title"><span><Users size={19}/></span><div><h2>Leads encontrados</h2><p>Fila com até 100 contatos pendentes por vez.</p></div></div>
-            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today" onClick={() => loadLeads({ refreshStats: true })} title="Carregar a fila atual de leads pendentes"><RotateCcw size={14}/>Atualizar fila</button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Mover enviados para a lista mínima de bloqueio"><Check size={14}/>Arquivar enviados</button></div>
+            <div className="panel-controls"><div className="filters"><button className={dateFilter === "all" ? "active" : ""} onClick={() => setDateFilter("all")}>Todos</button><button className={dateFilter === "today" ? "active" : ""} onClick={() => setDateFilter("today")}><CalendarDays size={13}/>Hoje</button></div><button className="archive-today cnpj-lookup-button" onClick={startCnpjLookup} disabled={busy || !visible.length} title="Consultar somente os leads exibidos nesta fila"><Search size={14}/>{job?.kind === "cnpj_lookup" && busy ? `Buscando ${job.processed}/${job.total}` : "Buscar CNPJ"}</button><button className="archive-today email-batch-button" onClick={startEmailBatch} disabled={busy || !visible.some((lead) => lead.registry_email && !lead.email_sent)} title="Enviar a mensagem de e-mail para os contatos pendentes desta fila"><Mail size={14}/>{job?.kind === "email_batch" && busy ? `Enviando ${job.processed}/${job.total}` : "Enviar e-mails"}</button><button className="archive-today" onClick={refreshQueue} disabled={busy || loading} title="Arquivar enviados e carregar os próximos leads pendentes"><RotateCcw size={14}/>{loading ? "Atualizando..." : "Atualizar fila"}</button><button className="archive-today" onClick={archiveSent} disabled={!sentCount} title="Mover enviados para a lista mínima de bloqueio"><Check size={14}/>Arquivar enviados</button></div>
           </div>
           <div className="table-wrap">
-            <table><thead><tr><th>Posição</th><th>Empresa</th><th>Avaliações</th><th>Site atual</th><th>Contato Google</th><th>Status</th><th>Ações</th></tr></thead>
+            <table><thead><tr><th>Posição</th><th>Empresa</th><th>Avaliações</th><th>Site atual</th><th>Contato Google</th><th>Status e-mail</th><th>Ações</th></tr></thead>
               <tbody>{visible.map((lead, index) => <tr key={lead.place_id} className={`${lead.sent ? "sent-row" : ""} ${lead.archived ? "archived-row" : ""}`}>
                 <td><span className="rank">{index + 1}º</span></td>
-                <td><strong>{lead.company_name}</strong><small>{lead.date}</small></td>
+                <td><strong>{lead.company_name}</strong><small>{lead.date}</small>{lead.registry_email && <small className="registry-email">{lead.registry_email}</small>}{lead.cnpj_checked && <span className={`cnpj-badge ${["alta", "media"].includes(lead.cnpj_confidence) ? "captured" : "missing"}`}>{lead.cnpj_status === "encontrado" ? `CNPJ: confiança ${lead.cnpj_confidence}` : "CNPJ não confirmado"}</span>}</td>
                 <td><span className="rating"><Star size={13}/>{Number(lead.rating || 0).toFixed(1)} <b>({lead.review_count})</b></span></td>
                 <td>{lead.current_site ? <a className="platform-tag" href={lead.current_site} target="_blank" rel="noreferrer">{lead.site_platform}<ExternalLink size={11}/></a> : <span className="platform-tag no-site">Sem site</span>}</td>
                 <td>{lead.phone || <span className="muted">Não informado</span>}</td>
-                <td><button className={`status-toggle ${lead.sent ? "sent-badge" : "pending-badge"}`} disabled={Boolean(leadActions[lead.place_id])} onClick={() => changeSentStatus(lead, !lead.sent)} title={lead.sent ? "Alterar manualmente para pendente" : "Alterar manualmente para enviado"}>{leadActions[lead.place_id] === "status" ? <LoaderCircle className="spin" size={12}/> : lead.sent ? <><Check size={12}/>Enviado</> : <>Pendente</>}</button>{lead.sent_at && <small>{lead.sent_at}</small>}</td>
-                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className="whatsapp-action" href={whatsappHref(lead)} onClick={(event) => openLeadContact(event, lead, whatsappHref(lead))}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className="instagram-action" href={lead.current_site} onClick={(event) => openLeadContact(event, lead, lead.current_site)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Excluir do painel">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
+                <td><span className={lead.email_sent ? "sent-badge" : "pending-badge"}>{lead.email_sent ? <><Check size={12}/>Enviado</> : <>Pendente</>}</span>{lead.email_sent_at && <small>{lead.email_sent_at}</small>}{!lead.registry_email && <small>Sem e-mail encontrado</small>}{lead.email_error && <small className="email-error" title={lead.email_error}>Falha no último envio</small>}</td>
+                <td><div className="row-actions">{lead.maps_link && <a className="icon-action" href={lead.maps_link} target="_blank" rel="noreferrer" title="Google Maps"><MapPinned size={15}/></a>}{lead.whatsapp_link ? <a className="whatsapp-action" href={whatsappHref(lead)} onClick={(event) => openLeadContact(event, lead, whatsappHref(lead))}><MessageCircle size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : "Abrir WhatsApp"}</a> : lead.site_platform === "Instagram" && lead.current_site ? <a className="instagram-action" href={lead.current_site} onClick={(event) => openLeadContact(event, lead, lead.current_site)}><Instagram size={15}/>{leadActions[lead.place_id] === "sending" ? "Salvando..." : "Abrir Instagram"}</a> : <span className="no-whatsapp">Sem contato</span>}{lead.cnpj_phone && <a className="cnpj-action" href={cnpjWhatsappHref(lead)} onClick={(event) => openLeadContact(event, lead, cnpjWhatsappHref(lead))}><MessageCircle size={15}/>Enviar dono</a>}{!lead.archived && <button className="delete-action" disabled={Boolean(leadActions[lead.place_id])} onClick={() => deleteLead(lead)} title="Excluir do painel">{leadActions[lead.place_id] === "archiving" ? <LoaderCircle className="spin" size={15}/> : <Trash2 size={15}/>}</button>}</div></td>
               </tr>)}</tbody>
             </table>
             {!loading && !visible.length && <div className="empty"><Radar size={31}/><strong>{dataUnavailable ? "Base temporariamente indisponível" : "Nenhum lead qualificado"}</strong><span>{dataUnavailable ? "O Firebase atingiu o limite de leituras. Seus leads continuam salvos." : "Faça uma pesquisa para alimentar sua base."}</span></div>}
@@ -767,9 +872,11 @@ function App() {
       {messageOpen && <div className="message-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setMessageOpen(false); }}>
         <aside className="message-modal" role="dialog" aria-modal="true" aria-label="Configuração da mensagem">
           <button className="modal-close" onClick={() => setMessageOpen(false)} title="Fechar"><X size={19}/></button>
-          <div className="panel-title"><span><MessageCircle size={19}/></span><div><h2>Mensagem</h2><p>Texto preenchido no WhatsApp.</p></div></div>
+          <div className="panel-title"><span>{messageChannel === "whatsapp" ? <MessageCircle size={19}/> : <Mail size={19}/>}</span><div><h2>Mensagens</h2><p>Configure separadamente a abordagem de cada canal.</p></div></div>
+          <div className="message-channels"><button className={messageChannel === "whatsapp" ? "active" : ""} onClick={() => setMessageChannel("whatsapp")}><MessageCircle size={15}/>Mensagem WhatsApp</button><button className={messageChannel === "email" ? "active" : ""} onClick={() => setMessageChannel("email")}><Mail size={15}/>Mensagem e-mail</button></div>
+          {messageChannel === "whatsapp" ? <>
           <label className="message-label"><span>Mensagem de abordagem</span><textarea value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} maxLength="3000"/><small className="template-tip">Variáveis: <b>[Empresa]</b>, <b>[AVALIAÇÕES]</b> e <b>[NOTA]</b>.</small></label>
-          <div className="message-save-row"><span>{messageDraft === message ? "Mensagem salva" : "Alterações ainda não salvas"}</span><button onClick={saveMessage} disabled={messageSaving || !messageDraft.trim() || messageDraft === message}><Check size={15}/>{messageSaving ? "Salvando..." : "Salvar mensagem"}</button></div>
+          <div className="message-save-row"><span>{messageDraft === message ? "Mensagem salva" : "Alterações ainda não salvas"}</span><button onClick={saveMessage} disabled={messageSaving || !messageDraft.trim() || messageDraft === message}><Check size={15}/>{messageSaving ? "Salvando..." : "Salvar WhatsApp"}</button></div>
           {sendMode === "manual" ? <div className="manual-note"><MessageCircle size={16}/><p>Use o botão “Abrir WhatsApp” de cada lead. A mensagem será preenchida e o envio continuará sob sua confirmação.</p></div> : <div className="dispatch-box">
             <div className="dispatch-grid">
               <label><span>Quantidade nesta sessão</span><input type="number" min="1" max="500" value={sessionAmount} onChange={(event) => setSessionAmount(event.target.value)}/></label>
@@ -794,6 +901,12 @@ function App() {
             </div>}
             <div className="manual-note"><Clock size={16}/><p>Inicie uma vez e permaneça no WhatsApp Desktop. Ao terminar cada intervalo, o aplicativo receberá o próximo contato com a mensagem preenchida.</p></div>
           </div>}
+          </> : <>
+            <label className="message-label email-subject-label"><span>Assunto do e-mail</span><input value={emailSubjectDraft} onChange={(event) => setEmailSubjectDraft(event.target.value)} maxLength="200" placeholder="Assunto enviado aos leads" /></label>
+            <label className="message-label"><span>Mensagem de e-mail</span><textarea value={emailMessageDraft} onChange={(event) => setEmailMessageDraft(event.target.value)} maxLength="10000"/><small className="template-tip">Variáveis: <b>[Empresa]</b>, <b>[AVALIAÇÕES]</b> e <b>[NOTA]</b>.</small></label>
+            <div className="message-save-row"><span>{emailSubjectDraft === emailSubject && emailMessageDraft === emailMessage ? "Mensagem salva" : "Alterações ainda não salvas"}</span><button onClick={saveEmailMessage} disabled={messageSaving || !emailSubjectDraft.trim() || !emailMessageDraft.trim() || (emailSubjectDraft === emailSubject && emailMessageDraft === emailMessage)}><Check size={15}/>{messageSaving ? "Salvando..." : "Salvar e-mail"}</button></div>
+            <div className="manual-note"><Mail size={16}/><p>O botão “Enviar e-mails” usa este assunto e esta mensagem para os contatos com e-mail encontrado na fila atual.</p></div>
+          </>}
         </aside>
       </div>}
       {activeView === "settings" && apiKeys.length > 0 && <section className="api-usage-section"><h2>Uso estimado no Prospect Sites</h2><p>Contagem das requisições feitas por este sistema neste mês. Chamadas feitas fora daqui não entram neste cálculo.</p><div className="api-usage-list">{apiKeys.map((key) => <article key={key.id}><div><strong>{key.name}</strong><small>{key.status === "active" ? "Em uso" : key.status === "exhausted" ? "Franquia mensal esgotada" : "Disponível"}</small></div><div className="api-usage-numbers"><b>{key.requests_used || 0} / {key.monthly_request_limit || 1000}</b><span>{key.requests_remaining ?? 1000} restantes</span><small>Renova em {formatDate(key.next_renewal_on)}</small></div><button className="delete-api" disabled={settingsLoading} onClick={() => deleteApiKey(key)} title={`Excluir ${key.name}`}><Trash2 size={14}/>Excluir</button></article>)}</div></section>}

@@ -1,11 +1,15 @@
 import asyncio
+from datetime import datetime
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .models import ApiKeyCreateRequest, ArchiveRequest, Job, MessageTemplateRequest, SearchRequest, SentStatusRequest
+from .models import ApiKeyCreateRequest, ArchiveRequest, CnpjLookupRequest, EmailBatchRequest, EmailTemplateRequest, Job, MessageTemplateRequest, SearchRequest, SentStatusRequest
+from .cnpj_lookup import digits, lookup_registry
+from .gmail_sender import gmail_service, send_lead_email
 from .api_key_repository import ApiKeyRepository
 from .firestore_repository import FirestoreRepository
 from .places import PlacesQuotaExceeded, PlacesRequestFailed, search_eligible_profiles
@@ -130,6 +134,24 @@ def save_message_template(request: MessageTemplateRequest):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise firestore_http_error("salvar a mensagem", exc) from exc
+
+
+@app.get("/api/settings/email-template")
+def get_email_template():
+    try:
+        return repository().email_template()
+    except Exception as exc:
+        raise firestore_http_error("carregar a mensagem de e-mail", exc) from exc
+
+
+@app.put("/api/settings/email-template")
+def save_email_template(request: EmailTemplateRequest):
+    try:
+        return repository().save_email_template(request.subject, request.message)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise firestore_http_error("salvar a mensagem de e-mail", exc) from exc
 
 
 @app.get("/api/leads/history")
@@ -317,6 +339,120 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
         job.detail = "Não foi possível concluir a pesquisa agora. Confira sua conexão e tente novamente."
 
 
+def comparable_phone(value: str) -> str:
+    number = digits(value)
+    if number.startswith("55") and len(number) in (12, 13):
+        number = number[2:]
+    return number
+
+
+async def run_cnpj_lookup(job_id: str, request: CnpjLookupRequest) -> None:
+    job = jobs[job_id]
+    settings = get_settings()
+    try:
+        leads = await asyncio.to_thread(repository().get_active_pending, request.place_ids)
+        job.status = "running"
+        job.total = len(leads)
+        if not leads:
+            job.status = "completed"
+            job.detail = "Nenhum lead pendente da fila atual precisa ser consultado."
+            return
+
+        found = different_phones = emails = failures = 0
+        for index, lead in enumerate(leads, start=1):
+            job.detail = f"Consultando CNPJ de {lead.company_name} ({index}/{len(leads)})"
+            try:
+                result, registry = await asyncio.to_thread(
+                    lookup_registry, lead, settings.gemini_api_key or "", settings.gemini_model
+                )
+                accepted = result.status == "encontrado" and result.confianca in {"alta", "media"}
+                owner_phone = registry.phone if (
+                    accepted and registry.phone
+                    and comparable_phone(registry.phone) != comparable_phone(lead.phone)
+                ) else ""
+                email = registry.email if accepted else ""
+                await asyncio.to_thread(
+                    repository().save_cnpj_contacts,
+                    lead.place_id,
+                    phone=owner_phone,
+                    email=email,
+                    confidence=result.confianca,
+                    status=result.status,
+                    checked_at=datetime.now(ZoneInfo("America/Sao_Paulo")).isoformat(),
+                )
+                found += int(accepted)
+                different_phones += int(bool(owner_phone))
+                emails += int(bool(email))
+            except Exception:
+                failures += 1
+            finally:
+                job.processed = index
+
+        job.status = "completed"
+        job.detail = (
+            f"{found} empresa(s) confirmada(s) com confiança média/alta · "
+            f"{different_phones} contato(s) diferente(s) · {emails} e-mail(s) encontrado(s)"
+            + (f" · {failures} falha(s)" if failures else "")
+        )
+    except Exception as exc:
+        job.status = "failed"
+        job.detail = f"Não foi possível concluir a busca de CNPJ: {exc}"
+
+
+async def run_email_batch(job_id: str, request: EmailBatchRequest) -> None:
+    job = jobs[job_id]
+    settings = get_settings()
+    try:
+        template = await asyncio.to_thread(repository().email_template)
+        if not template["subject"] or not template["message"]:
+            raise RuntimeError("Configure e salve a mensagem de e-mail antes de enviar.")
+        leads = await asyncio.to_thread(repository().get_email_leads, request.place_ids)
+        eligible = [lead for lead in leads if lead.registry_email and not lead.email_sent]
+        job.status = "running"
+        job.total = len(eligible)
+        if not eligible:
+            job.status = "completed"
+            job.detail = "Nenhum lead pendente com e-mail encontrado nesta fila."
+            return
+
+        service = await asyncio.to_thread(gmail_service, settings)
+        sent = failed = 0
+        for index, lead in enumerate(eligible, start=1):
+            job.detail = f"Enviando e-mail para {lead.company_name} ({index}/{len(eligible)})"
+            try:
+                claimed = await asyncio.to_thread(repository().claim_email, lead.place_id)
+                if not claimed:
+                    continue
+                await asyncio.to_thread(
+                    send_lead_email,
+                    service,
+                    settings,
+                    lead,
+                    template["subject"],
+                    template["message"],
+                )
+                sent_at = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
+                await asyncio.to_thread(
+                    repository().finish_email, lead.place_id, sent=True, sent_at=sent_at
+                )
+                sent += 1
+            except Exception as exc:
+                await asyncio.to_thread(
+                    repository().finish_email, lead.place_id, sent=False, error=str(exc)
+                )
+                failed += 1
+            finally:
+                job.processed = index
+            if index < len(eligible):
+                await asyncio.sleep(2)
+
+        job.status = "completed" if not failed else "failed"
+        job.detail = f"{sent} e-mail(s) enviado(s) · {failed} falha(s)"
+    except Exception as exc:
+        job.status = "failed"
+        job.detail = f"Não foi possível concluir os envios: {exc}"
+
+
 @app.on_event("startup")
 async def migrate_legacy_leads() -> None:
     try:
@@ -336,3 +472,50 @@ async def start_search(
     jobs[job_id] = Job(id=job_id, kind="search", status="queued")
     background_tasks.add_task(run_search, job_id, request)
     return jobs[job_id]
+
+
+@app.post("/api/cnpj-lookup", status_code=202)
+async def start_cnpj_lookup(
+    request: CnpjLookupRequest,
+    background_tasks: BackgroundTasks,
+):
+    settings = get_settings()
+    if not (settings.gemini_api_key or "").strip():
+        raise HTTPException(status_code=503, detail="GEMINI_API_KEY não configurada no backend.")
+    job_id = str(uuid4())
+    jobs[job_id] = Job(
+        id=job_id,
+        kind="cnpj_lookup",
+        status="queued",
+        total=len(request.place_ids),
+    )
+    background_tasks.add_task(run_cnpj_lookup, job_id, request)
+    return jobs[job_id]
+
+
+@app.post("/api/email/send-batch", status_code=202)
+async def start_email_batch(
+    request: EmailBatchRequest,
+    background_tasks: BackgroundTasks,
+):
+    settings = get_settings()
+    gmail_values = (
+        settings.gmail_client_id,
+        settings.gmail_client_secret,
+        settings.gmail_refresh_token,
+        settings.gmail_sender_email,
+    )
+    if not all((value or "").strip() for value in gmail_values):
+        raise HTTPException(status_code=503, detail="As credenciais do Gmail não estão completas no backend.")
+    job_id = str(uuid4())
+    jobs[job_id] = Job(id=job_id, kind="email_batch", status="queued", total=len(request.place_ids))
+    background_tasks.add_task(run_email_batch, job_id, request)
+    return jobs[job_id]
+
+
+@app.post("/api/email/statuses")
+def email_statuses(request: EmailBatchRequest):
+    try:
+        return repository().get_email_leads(request.place_ids)
+    except Exception as exc:
+        raise firestore_http_error("carregar os status de e-mail", exc) from exc

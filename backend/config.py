@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 load_dotenv()
+load_dotenv(".env.local", override=False)
 
 
 class Settings(BaseModel):
@@ -17,6 +18,13 @@ class Settings(BaseModel):
     service_account_info: dict | None = None
     sheet_name: str
     frontend_origins: list[str]
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    gmail_client_id: str | None = None
+    gmail_client_secret: str | None = None
+    gmail_refresh_token: str | None = None
+    gmail_sender_email: str | None = None
+    gmail_sender_name: str = "Prospect Sites"
 
 
 @lru_cache
@@ -70,4 +78,11 @@ def get_settings() -> Settings:
             ).split(",")
             if item.strip()
         ],
+        gemini_api_key=os.getenv("GEMINI_API_KEY"),
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        gmail_client_id=os.getenv("GMAIL_CLIENT_ID"),
+        gmail_client_secret=os.getenv("GMAIL_CLIENT_SECRET"),
+        gmail_refresh_token=os.getenv("GMAIL_REFRESH_TOKEN"),
+        gmail_sender_email=os.getenv("GMAIL_SENDER_EMAIL"),
+        gmail_sender_name=os.getenv("GMAIL_SENDER_NAME", "Prospect Sites"),
     )
