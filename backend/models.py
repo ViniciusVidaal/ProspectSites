@@ -24,6 +24,27 @@ class SearchRequest(BaseModel):
         return self
 
 
+class BatchSearchRequest(BaseModel):
+    queries: list[str] = Field(min_length=1, max_length=100)
+    minimum_reviews: int = Field(default=50, ge=0, le=100000)
+
+    @model_validator(mode="after")
+    def normalize_queries(self):
+        normalized = []
+        seen = set()
+        for value in self.queries:
+            term = str(value or "").strip()
+            key = term.casefold()
+            if len(term) < 2 or key in seen:
+                continue
+            seen.add(key)
+            normalized.append(term)
+        if not normalized:
+            raise ValueError("Informe pelo menos uma palavra-chave com 2 caracteres.")
+        self.queries = normalized
+        return self
+
+
 class Lead(BaseModel):
     date: str
     company_name: str

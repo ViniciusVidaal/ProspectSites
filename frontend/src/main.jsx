@@ -71,6 +71,7 @@ function App() {
   const [mode, setMode] = useState("free");
   const [activeView, setActiveView] = useState("prospecting");
   const [query, setQuery] = useState("");
+  const [batchQueries, setBatchQueries] = useState("");
   const [selectedNiche, setSelectedNiche] = useState("");
   const [location, setLocation] = useState("");
   const [category, setCategory] = useState("");
@@ -379,8 +380,36 @@ function App() {
   const sentCount = leads.filter((lead) => lead.sent && !lead.archived).length;
   const busy = job && !["completed", "failed"].includes(job.status);
 
+  const parsedBatchQueries = useMemo(() => {
+    const seen = new Set();
+    return batchQueries
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter((item) => {
+        const key = item.toLocaleLowerCase("pt-BR");
+        if (item.length < 2 || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 100);
+  }, [batchQueries]);
+
   const search = async (event) => {
     event.preventDefault();
+    if (mode === "batch") {
+      if (!parsedBatchQueries.length) return setNotice("Informe pelo menos uma palavra-chave por linha.");
+      setNotice("");
+      try {
+        setJob(await api("/api/search/batch", {
+          method: "POST",
+          body: JSON.stringify({
+            queries: parsedBatchQueries,
+            minimum_reviews: Number(minimumReviews),
+          }),
+        }));
+      } catch (error) { setNotice(error.message); }
+      return;
+    }
     const finalQuery = mode === "free"
       ? query.trim()
       : [selectedNiche, location].filter(Boolean).join(" ").trim();
@@ -777,6 +806,7 @@ function App() {
         <div className="panel-title"><span><Search size={19}/></span><div><h1>Nova pesquisa</h1><p>Encontre empresas sem site próprio usando o limite de avaliações que você escolher.</p></div></div>
         <div className="mode-tabs">
           <button className={mode === "free" ? "active" : ""} onClick={() => setMode("free")}>Pesquisa livre</button>
+          <button className={mode === "batch" ? "active" : ""} onClick={() => setMode("batch")}>Pesquisa em lote</button>
           <button className={mode === "catalog" ? "active" : ""} onClick={() => setMode("catalog")}>Explorar nichos</button>
         </div>
 
@@ -786,6 +816,15 @@ function App() {
               <label><span>Palavra-chave completa</span><div className="input-shell"><Building2 size={17}/><input required value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ex: Clínica odontológica Asa Norte Brasília"/></div></label>
               <label className="reviews-field"><span>Mais de quantas avaliações?</span><div className="input-shell"><Star size={16}/><input type="number" min="0" max="100000" value={minimumReviews} onChange={(event) => setMinimumReviews(event.target.value)} /></div></label>
               <button className="primary" disabled={busy}><Radar size={17}/>{busy ? "Pesquisando..." : "Pesquisar"}</button>
+            </div>
+          ) : mode === "batch" ? (
+            <div className="batch-search">
+              <label className="batch-keywords"><span>Palavras-chave (uma por linha)</span><textarea required value={batchQueries} onChange={(event) => setBatchQueries(event.target.value)} placeholder={"Clínica odontológica Asa Norte Brasília\nSalão de beleza Águas Claras Brasília\nMóveis planejados Taguatinga"} /></label>
+              <div className="batch-search__actions">
+                <label className="reviews-field"><span>Mais de quantas avaliações?</span><div className="input-shell"><Star size={16}/><input type="number" min="0" max="100000" value={minimumReviews} onChange={(event) => setMinimumReviews(event.target.value)} /></div></label>
+                <small>{parsedBatchQueries.length} de 100 palavra(s)-chave pronta(s)</small>
+                <button className="primary" disabled={busy || !parsedBatchQueries.length}><Radar size={17}/>{busy ? "Pesquisando..." : "Iniciar pesquisa em lote"}</button>
+              </div>
             </div>
           ) : (
             <div className="catalog-search">

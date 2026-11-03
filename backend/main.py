@@ -7,7 +7,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .models import ApiKeyCreateRequest, ArchiveRequest, CnpjLookupRequest, EmailBatchRequest, EmailTemplateRequest, Job, MessageTemplateRequest, SearchRequest, SentStatusRequest
+from .models import ApiKeyCreateRequest, ArchiveRequest, BatchSearchRequest, CnpjLookupRequest, EmailBatchRequest, EmailTemplateRequest, Job, MessageTemplateRequest, SearchRequest, SentStatusRequest
 from .cnpj_lookup import digits, lookup_registry
 from .gmail_sender import gmail_service, send_lead_email
 from .api_key_repository import ApiKeyRepository
@@ -339,6 +339,62 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
         job.detail = "Não foi possível concluir a pesquisa agora. Confira sua conexão e tente novamente."
 
 
+async def run_batch_search(job_id: str, request: BatchSearchRequest) -> None:
+    job = jobs[job_id]
+    key_id = None
+    saved = scanned = qualified = duplicates = 0
+    try:
+        job.status = "running"
+        job.total = len(request.queries)
+        key_repository = api_keys()
+        key_value, key_id = key_repository.active()
+        for index, query in enumerate(request.queries, start=1):
+            job.detail = f'Pesquisando "{query}" ({index}/{job.total})'
+            report = await search_eligible_profiles(
+                key_value,
+                query,
+                minimum_reviews=request.minimum_reviews,
+                max_pages=3,
+                on_successful_request=lambda: key_repository.record_usage(key_id),
+            )
+            inserted = await asyncio.to_thread(repository().append_new, report.eligible)
+            saved += len(inserted)
+            scanned += report.scanned
+            qualified += len(report.eligible)
+            duplicates += len(report.eligible) - len(inserted)
+            job.processed = index
+            job.detail = (
+                f"{index}/{job.total} concluída(s) · {saved} novo(s) salvo(s) · "
+                f"{scanned} perfil(is) analisado(s)"
+            )
+        job.status = "completed"
+        job.detail = (
+            f"{job.total} palavra(s)-chave concluída(s) · {saved} novo(s) salvo(s) · "
+            f"{scanned} perfil(is) analisado(s) · {qualified} qualificado(s) · "
+            f"{duplicates} duplicado(s)"
+        )
+    except PlacesQuotaExceeded as exc:
+        if key_id:
+            api_keys().mark_exhausted(key_id, str(exc))
+        job.status = "failed"
+        job.detail = (
+            f"Lote interrompido após {job.processed}/{job.total} palavra(s)-chave. "
+            "A API do Google Maps atingiu o limite de uso; os leads concluídos foram salvos."
+        )
+    except PlacesRequestFailed as exc:
+        job.status = "failed"
+        job.detail = f"Lote interrompido após {job.processed}/{job.total}: {exc}"
+    except RuntimeError as exc:
+        job.status = "failed"
+        job.detail = str(exc) if "Nenhuma API cadastrada" in str(exc) else "Não foi possível continuar a pesquisa em lote."
+    except Exception:
+        job.status = "failed"
+        job.detail = (
+            f"Lote interrompido após {job.processed}/{job.total} palavra(s)-chave. "
+            "Os leads das pesquisas concluídas permaneceram salvos."
+        )
+
+
 def comparable_phone(value: str) -> str:
     number = digits(value)
     if number.startswith("55") and len(number) in (12, 13):
@@ -471,6 +527,22 @@ async def start_search(
     job_id = str(uuid4())
     jobs[job_id] = Job(id=job_id, kind="search", status="queued")
     background_tasks.add_task(run_search, job_id, request)
+    return jobs[job_id]
+
+
+@app.post("/api/search/batch", status_code=202)
+async def start_batch_search(
+    request: BatchSearchRequest,
+    background_tasks: BackgroundTasks,
+):
+    job_id = str(uuid4())
+    jobs[job_id] = Job(
+        id=job_id,
+        kind="batch_search",
+        status="queued",
+        total=len(request.queries),
+    )
+    background_tasks.add_task(run_batch_search, job_id, request)
     return jobs[job_id]
 
 
