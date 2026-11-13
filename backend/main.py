@@ -14,8 +14,10 @@ from .api_key_repository import ApiKeyRepository
 from .firestore_repository import FirestoreRepository
 from .places import PlacesQuotaExceeded, PlacesRequestFailed, search_eligible_profiles
 from .sheets import SheetsRepository
+from .crm_router import router as crm_router
 
 app = FastAPI(title="Prospect Sites API", version="2.0.0")
+app.include_router(crm_router)
 jobs: dict[str, Job] = {}
 
 try:
@@ -24,7 +26,7 @@ try:
         CORSMiddleware,
         allow_origins=_settings.frontend_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
     )
 except RuntimeError:

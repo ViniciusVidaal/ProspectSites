@@ -3,9 +3,10 @@ import { createRoot } from "react-dom/client";
 import {
   Archive, ArchiveRestore, Building2, CalendarDays, Check, ExternalLink, Instagram, LoaderCircle, MapPin,
   Clock, MapPinned, MessageCircle, Moon, Pause, Play, Radar, RotateCcw,
-  Search, Star, Sun, Trash2, Users, X, ListFilter, Settings, KeyRound, AlertTriangle, Menu, History, Undo2, Mail
+  Search, Star, Sun, Trash2, Users, X, ListFilter, Settings, KeyRound, AlertTriangle, Menu, History, Undo2, Mail, BriefcaseBusiness
 } from "lucide-react";
 import { NICHE_CATEGORIES } from "./niches";
+import CrmPage from "./crm/CrmPage";
 import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -791,7 +792,7 @@ function App() {
 
   return (
     <main className={`app-shell ${sidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
-      <nav className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`} aria-label="Navegação principal"><a className="brand" href="#" onClick={() => chooseView("prospecting")}><span><Radar size={20}/></span>Prospect Sites</a><div className="sidebar-links"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => chooseView("prospecting")} title="Prospectar"><Radar size={17}/>Prospectar</button><button onClick={() => { setMessageDraft(message); setEmailSubjectDraft(emailSubject); setEmailMessageDraft(emailMessage); setMessageOpen(true); setSidebarOpen(false); }} title="Mensagens"><MessageCircle size={17}/>Mensagens</button><button className={activeView === "settings" ? "active" : ""} onClick={() => chooseView("settings")} title="Configurações"><Settings size={17}/>Configurações</button></div></nav>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
+      <nav className={`sidebar ${sidebarOpen ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`} aria-label="Navegação principal"><a className="brand" href="#" onClick={() => chooseView("prospecting")}><span><Radar size={20}/></span>Prospect Sites</a><div className="sidebar-links"><button className={activeView === "prospecting" ? "active" : ""} onClick={() => chooseView("prospecting")} title="Prospectar"><Radar size={17}/>Prospectar</button><button className={activeView === "crm" ? "active" : ""} onClick={() => chooseView("crm")} title="CRM Kanban"><BriefcaseBusiness size={17}/>CRM Kanban</button><button onClick={() => { setMessageDraft(message); setEmailSubjectDraft(emailSubject); setEmailMessageDraft(emailMessage); setMessageOpen(true); setSidebarOpen(false); }} title="Mensagens"><MessageCircle size={17}/>Mensagens</button><button className={activeView === "settings" ? "active" : ""} onClick={() => chooseView("settings")} title="Configurações"><Settings size={17}/>Configurações</button></div></nav>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={() => setSidebarOpen(false)} />}
       <div className="app-content"><header className="topbar"><button className="menu-toggle" onClick={toggleSidebar} aria-label={sidebarCollapsed ? "Abrir menu" : "Recolher menu"}><Menu size={20}/></button><div className="mobile-brand">Prospect Sites</div><button className="theme-toggle" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title={theme === "light" ? "Ativar modo escuro" : "Ativar modo claro"}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}<span>{theme === "light" ? "Escuro" : "Claro"}</span></button></header>
 
       {activeView === "prospecting" && <>
@@ -867,6 +868,8 @@ function App() {
 
       </section>
       </>}
+
+      {activeView === "crm" && <CrmPage apiBase={API}/>}
 
       {activeView === "leads" && <section className="history-page">
         <div className="history-hero">

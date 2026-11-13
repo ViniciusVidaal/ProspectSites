@@ -34,3 +34,5 @@ services:
         sync: false
       - key: GMAIL_SENDER_NAME
         sync: false
+      - key: HERMES_WEBHOOK_SECRET
+        sync: false

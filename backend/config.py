@@ -25,6 +25,7 @@ class Settings(BaseModel):
     gmail_refresh_token: str | None = None
     gmail_sender_email: str | None = None
     gmail_sender_name: str = "Prospect Sites"
+    hermes_webhook_secret: str | None = None
 
 
 @lru_cache
@@ -85,4 +86,5 @@ def get_settings() -> Settings:
         gmail_refresh_token=os.getenv("GMAIL_REFRESH_TOKEN"),
         gmail_sender_email=os.getenv("GMAIL_SENDER_EMAIL"),
         gmail_sender_name=os.getenv("GMAIL_SENDER_NAME", "Prospect Sites"),
+        hermes_webhook_secret=os.getenv("HERMES_WEBHOOK_SECRET"),
     )
