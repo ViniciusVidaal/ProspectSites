@@ -26,7 +26,7 @@ class FakeReference:
         return FakeAggregate(self.counts[self.filters])
 
 
-def test_stats_move_sent_leads_out_of_qualified_before_physical_archive():
+def test_stats_keep_qualified_sent_and_archived_totals_separate():
     repository = object.__new__(FirestoreRepository)
     repository.collection = FakeReference({
         (): 1015,
@@ -43,5 +43,5 @@ def test_stats_move_sent_leads_out_of_qualified_before_physical_archive():
     assert result["total"] == 2100
     assert result["qualified"] == 135
     assert result["active"] == 135
-    assert result["archived"] == 1965
+    assert result["archived"] == 1085
     assert result["sent"] == 880

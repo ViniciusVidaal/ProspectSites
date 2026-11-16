@@ -499,7 +499,6 @@ function App() {
       ...current,
       qualified: Math.max(0, Number(current.qualified ?? current.active ?? 0) - 1),
       active: Math.max(0, Number(current.active || 0) - 1),
-      archived: Number(current.archived || 0) + 1,
       sent: Number(current.sent || 0) + 1,
       sent_today: Number(current.sent_today || 0) + 1,
     }));
@@ -524,7 +523,6 @@ function App() {
         ...current,
         qualified: Number(current.qualified ?? current.active ?? 0) + 1,
         active: Number(current.active || 0) + 1,
-        archived: Math.max(0, Number(current.archived || 0) - 1),
         sent: Math.max(0, Number(current.sent || 0) - 1),
         sent_today: Math.max(0, Number(current.sent_today || 0) - 1),
       }));
@@ -567,7 +565,6 @@ function App() {
       ...current,
       qualified: Math.max(0, Number(current.qualified ?? current.active ?? 0) + (sent ? -1 : 1)),
       active: Math.max(0, Number(current.active || 0) + (sent ? -1 : 1)),
-      archived: Math.max(0, Number(current.archived || 0) + (sent ? 1 : -1)),
       sent: Math.max(0, Number(current.sent || 0) + (sent ? 1 : -1)),
       sent_today: Math.max(0, Number(current.sent_today || 0) + (sent ? 1 : wasSentToday ? -1 : 0)),
     }));
@@ -586,7 +583,6 @@ function App() {
         ...current,
         qualified: Math.max(0, Number(current.qualified ?? current.active ?? 0) + (sent ? 1 : -1)),
         active: Math.max(0, Number(current.active || 0) + (sent ? 1 : -1)),
-        archived: Math.max(0, Number(current.archived || 0) + (sent ? -1 : 1)),
         sent: Math.max(0, Number(current.sent || 0) + (sent ? -1 : 1)),
         sent_today: Math.max(0, Number(current.sent_today || 0) + (sent ? -1 : wasSentToday ? 1 : 0)),
       }));

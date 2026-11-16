@@ -472,18 +472,12 @@ class FirestoreRepository:
             .where("archived", "==", False)
             .where("sent", "==", False)
         )
-        sent_waiting_for_archive = count(
-            self.collection
-            .where("archived", "==", False)
-            .where("sent", "==", True)
-        )
         legacy_archived = count(self.collection.where("archived", "==", True))
-        archived = count(self.blocklist) + sent_waiting_for_archive + legacy_archived
+        archived = count(self.blocklist) + legacy_archived
         return {
             "total": count(self.collection) + count(self.blocklist),
-            # Dashboard categories are intentionally exclusive: once contacted,
-            # a lead stops being qualified/actionable immediately, even before
-            # the next queue refresh moves its compact profile to the blocklist.
+            # A contacted lead stops being qualified/actionable immediately,
+            # but only enters the archived metric after the physical archive.
             "qualified": qualified,
             "active": qualified,
             "sent": count(self.collection.where("sent", "==", True)),
