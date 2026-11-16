@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -111,6 +112,7 @@ class ApiKeyCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     api_key: str = Field(min_length=20, max_length=300)
     make_active: bool = True
+    provider: Literal["google_places", "serpapi"] = "google_places"
 
 
 class Job(BaseModel):

@@ -4,12 +4,17 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+import firebase_admin
+from firebase_admin import credentials
 from firebase_admin import firestore
 
 from .config import Settings
 
 
-MONTHLY_FREE_REQUESTS = 1000
+PROVIDER_CONFIG = {
+    "google_places": {"collection": "places_api_keys", "label": "Google Maps/Places", "monthly_limit": 1000},
+    "serpapi": {"collection": "serpapi_keys", "label": "SerpApi", "monthly_limit": None},
+}
 
 
 def current_billing_month() -> str:
@@ -23,11 +28,20 @@ def next_renewal_date() -> str:
 
 
 class ApiKeyRepository:
-    collection_name = "places_api_keys"
-
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, provider: str = "google_places"):
+        if provider not in PROVIDER_CONFIG:
+            raise ValueError("Provedor de API inválido.")
         self.settings = settings
-        self.collection = firestore.client().collection(self.collection_name)
+        self.provider = provider
+        self.config = PROVIDER_CONFIG[provider]
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(credentials.Certificate(settings.firebase_service_account_info))
+        self.collection = firestore.client().collection(self.config["collection"])
+
+    @property
+    def fallback_key(self) -> str:
+        value = self.settings.places_api_key if self.provider == "google_places" else self.settings.serpapi_api_key
+        return str(value or "").strip()
 
     def _refresh_monthly_statuses(self) -> None:
         """Re-enables the previously exhausted selection after its new monthly cycle."""
@@ -66,7 +80,16 @@ class ApiKeyRepository:
             return str(data.get("api_key", "")), active[0].id
         if any(self.collection.limit(1).stream()):
             raise RuntimeError("Nenhuma API cadastrada está ativa. Abra Configurações e selecione uma API autorizada.")
-        return self.settings.places_api_key, None
+        if self.fallback_key:
+            return self.fallback_key, None
+        raise RuntimeError(f"Nenhuma chave {self.config['label']} está disponível. Abra Configurações e cadastre outra chave.")
+
+    def available(self) -> bool:
+        try:
+            key, _ = self.active()
+            return bool(key)
+        except RuntimeError:
+            return False
 
     def list_public(self) -> list[dict]:
         self._refresh_monthly_statuses()
@@ -77,6 +100,7 @@ class ApiKeyRepository:
             used = int(data.get("usage_requests", 0) or 0)
             if data.get("usage_month") != month:
                 used = 0
+            monthly_limit = self.config["monthly_limit"]
             items.append({
                 "id": snapshot.id,
                 "name": data.get("name", "API sem nome"),
@@ -87,8 +111,8 @@ class ApiKeyRepository:
                 "renews_on": data.get("renews_on", ""),
                 "last_error": data.get("last_error", ""),
                 "requests_used": used,
-                "requests_remaining": max(MONTHLY_FREE_REQUESTS - used, 0),
-                "monthly_request_limit": MONTHLY_FREE_REQUESTS,
+                "requests_remaining": max(monthly_limit - used, 0) if monthly_limit is not None else None,
+                "monthly_request_limit": monthly_limit,
                 "usage_month": month,
                 "next_renewal_on": next_renewal_date(),
             })
@@ -97,7 +121,7 @@ class ApiKeyRepository:
     def add(self, name: str, api_key: str, make_active: bool = True) -> dict:
         clean_name, clean_key = name.strip(), api_key.strip()
         if len(clean_name) < 2 or len(clean_key) < 20:
-            raise ValueError("Informe um nome e uma chave válida da API do Google Maps.")
+            raise ValueError(f"Informe um nome e uma chave válida da {self.config['label']}.")
         batch = firestore.client().batch()
         if make_active:
             for snapshot in self.collection.where("status", "==", "active").stream():
@@ -164,7 +188,7 @@ class ApiKeyRepository:
         data = snapshot.to_dict() or {}
         was_active = data.get("status") == "active"
         alternatives = sorted(
-            (item for item in self.collection.stream() if item.id != key_id),
+            (item for item in self.collection.where("status", "==", "inactive").stream() if item.id != key_id),
             key=lambda item: str((item.to_dict() or {}).get("name", "")).casefold(),
         )
         batch = firestore.client().batch()
@@ -195,3 +219,35 @@ class ApiKeyRepository:
             "renews_on": next_renewal_date(),
             "last_error": detail[:240],
         })
+
+    def failover(self, key_id: str | None, detail: str = "", invalid: bool = False) -> bool:
+        """Marks a failed key and atomically promotes the next available stored key."""
+        if not key_id:
+            return False
+        self._refresh_monthly_statuses()
+        reference = self.collection.document(key_id)
+        current = reference.get()
+        if not current.exists:
+            return False
+        data = current.to_dict() or {}
+        if data.get("status") != "active":
+            return bool(list(self.collection.where("status", "==", "active").limit(1).stream()))
+        alternatives = sorted(
+            (item for item in self.collection.where("status", "==", "inactive").stream() if item.id != key_id),
+            key=lambda item: str((item.to_dict() or {}).get("created_at") or item.id),
+        )
+        batch = firestore.client().batch()
+        batch.update(reference, {
+            "status": "invalid" if invalid else "exhausted",
+            "quota_exhausted_at": None if invalid else firestore.SERVER_TIMESTAMP,
+            "renews_on": "" if invalid else next_renewal_date(),
+            "last_error": detail[:240],
+        })
+        if alternatives:
+            batch.update(alternatives[0].reference, {
+                "status": "active",
+                "activated_at": firestore.SERVER_TIMESTAMP,
+                "last_error": "",
+            })
+        batch.commit()
+        return bool(alternatives)

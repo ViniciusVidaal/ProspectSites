@@ -17,6 +17,10 @@ class PlacesRequestFailed(RuntimeError):
     pass
 
 
+class PlacesCredentialError(PlacesRequestFailed):
+    pass
+
+
 def ensure_places_response(response: httpx.Response) -> None:
     if response.is_success:
         return
@@ -25,7 +29,7 @@ def ensure_places_response(response: httpx.Response) -> None:
     if response.status_code == 429 or any(term in body for term in quota_terms):
         raise PlacesQuotaExceeded("A API do Google Maps atingiu um limite de uso.")
     if response.status_code in (401, 403) and ("api key" in body or "key" in body):
-        raise PlacesRequestFailed("A chave da API do Google Maps foi recusada. Verifique as restrições e se a Places API está ativada.")
+        raise PlacesCredentialError("A chave da API do Google Maps foi recusada. Verifique as restrições e se a Places API está ativada.")
     raise PlacesRequestFailed("O Google Maps não respondeu à pesquisa agora. Tente novamente em alguns instantes.")
 
 PLATFORM_HOSTS = {

@@ -21,6 +21,14 @@ class ProviderNotConfigured(ProviderError):
     pass
 
 
+class SerpApiQuotaExceeded(ProviderError):
+    pass
+
+
+class SerpApiCredentialError(ProviderError):
+    pass
+
+
 class SerpApiProvider:
     base_url = "https://serpapi.com/search.json"
 
@@ -30,19 +38,34 @@ class SerpApiProvider:
         self.api_key = api_key.strip()
         self.timeout = timeout
 
-    async def _get(self, params: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _raise_for_provider_error(status_code: int, message: str) -> None:
+        normalized = (message or "").casefold()
+        quota_terms = ("run out of searches", "out of searches", "quota", "too many requests", "limit reached")
+        credential_terms = ("invalid api key", "api key is invalid", "unauthorized", "not authorized", "authentication")
+        if status_code == 429 or any(term in normalized for term in quota_terms):
+            raise SerpApiQuotaExceeded("A SerpApi atingiu o limite de buscas desta chave.")
+        if status_code in (401, 403) or any(term in normalized for term in credential_terms):
+            raise SerpApiCredentialError("A chave da SerpApi foi recusada.")
+
+    async def _request(self, params: dict[str, Any], api_key: str) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(self.base_url, params={**params, "api_key": self.api_key, "output": "json"})
+                response = await client.get(self.base_url, params={**params, "api_key": api_key, "output": "json"})
+                self._raise_for_provider_error(response.status_code, response.text)
                 response.raise_for_status()
                 payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise ProviderError(f"Falha ao consultar a SerpApi: {exc}") from exc
         if payload.get("error"):
+            self._raise_for_provider_error(response.status_code, str(payload["error"]))
             raise ProviderError(str(payload["error"]))
         if (payload.get("search_metadata") or {}).get("status") == "Error":
             raise ProviderError("A SerpApi não concluiu a consulta.")
         return payload
+
+    async def _get(self, params: dict[str, Any]) -> dict[str, Any]:
+        return await self._request(params, self.api_key)
 
     @staticmethod
     def _company(item: dict[str, Any]) -> dict[str, Any]:
@@ -112,6 +135,37 @@ class SerpApiProvider:
         if not data_id:
             return None
         return (await self._get({"engine": "google_maps_posts", "data_id": data_id, "hl": "pt-BR"})).get("posts") or []
+
+
+class RotatingSerpApiProvider(SerpApiProvider):
+    def __init__(self, key_repository, timeout: float = 30.0):
+        self.key_repository = key_repository
+        self.timeout = timeout
+        self.api_key = ""
+
+    async def _get(self, params: dict[str, Any]) -> dict[str, Any]:
+        attempted: set[str] = set()
+        while True:
+            try:
+                api_key, key_id = self.key_repository.active()
+            except RuntimeError as exc:
+                raise ProviderNotConfigured(str(exc)) from exc
+            attempt_id = key_id or "environment"
+            if attempt_id in attempted:
+                raise ProviderError("Todas as chaves disponíveis da SerpApi falharam nesta consulta.")
+            attempted.add(attempt_id)
+            try:
+                payload = await self._request(params, api_key)
+                self.key_repository.record_usage(key_id)
+                return payload
+            except SerpApiQuotaExceeded as exc:
+                if self.key_repository.failover(key_id, str(exc)):
+                    continue
+                raise
+            except SerpApiCredentialError as exc:
+                if self.key_repository.failover(key_id, str(exc), invalid=True):
+                    continue
+                raise
 
 
 def demo_search(name: str, city: str = "") -> list[dict[str, Any]]:

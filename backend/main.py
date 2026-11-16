@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+from typing import Literal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -12,7 +13,7 @@ from .cnpj_lookup import digits, lookup_registry
 from .gmail_sender import gmail_service, send_lead_email
 from .api_key_repository import ApiKeyRepository
 from .firestore_repository import FirestoreRepository
-from .places import PlacesQuotaExceeded, PlacesRequestFailed, search_eligible_profiles
+from .places import PlacesCredentialError, PlacesQuotaExceeded, PlacesRequestFailed, search_eligible_profiles
 from .sheets import SheetsRepository
 from .crm_router import router as crm_router
 from .google_analysis_router import router as google_analysis_router
@@ -39,10 +40,36 @@ def repository() -> FirestoreRepository:
     return FirestoreRepository(get_settings())
 
 
-def api_keys() -> ApiKeyRepository:
+def api_keys(provider: str = "google_places") -> ApiKeyRepository:
     settings = get_settings()
-    repository()
-    return ApiKeyRepository(settings)
+    return ApiKeyRepository(settings, provider)
+
+
+async def search_places_with_failover(query: str, minimum_reviews: int, max_pages: int = 3):
+    key_repository = api_keys("google_places")
+    attempted: set[str] = set()
+    while True:
+        key_value, key_id = key_repository.active()
+        attempt_id = key_id or "environment"
+        if attempt_id in attempted:
+            raise RuntimeError("Todas as chaves disponíveis do Google Maps falharam nesta consulta.")
+        attempted.add(attempt_id)
+        try:
+            return await search_eligible_profiles(
+                key_value,
+                query,
+                minimum_reviews=minimum_reviews,
+                max_pages=max_pages,
+                on_successful_request=lambda: key_repository.record_usage(key_id),
+            )
+        except PlacesQuotaExceeded as exc:
+            if key_repository.failover(key_id, str(exc)):
+                continue
+            raise
+        except PlacesCredentialError as exc:
+            if key_repository.failover(key_id, str(exc), invalid=True):
+                continue
+            raise
 
 
 def firestore_http_error(action: str, exc: Exception) -> HTTPException:
@@ -188,9 +215,9 @@ def list_lead_history(
 
 
 @app.get("/api/settings/api-keys")
-def list_api_keys():
+def list_api_keys(provider: Literal["google_places", "serpapi"] = "google_places"):
     try:
-        return api_keys().list_public()
+        return api_keys(provider).list_public()
     except Exception:
         raise HTTPException(status_code=503, detail="Não foi possível carregar as configurações de API agora.")
 
@@ -198,7 +225,7 @@ def list_api_keys():
 @app.post("/api/settings/api-keys")
 def add_api_key(request: ApiKeyCreateRequest):
     try:
-        return api_keys().add(request.name, request.api_key, request.make_active)
+        return api_keys(request.provider).add(request.name, request.api_key, request.make_active)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception:
@@ -206,9 +233,9 @@ def add_api_key(request: ApiKeyCreateRequest):
 
 
 @app.post("/api/settings/api-keys/{key_id}/activate")
-def activate_api_key(key_id: str):
+def activate_api_key(key_id: str, provider: Literal["google_places", "serpapi"] = "google_places"):
     try:
-        api_keys().activate(key_id)
+        api_keys(provider).activate(key_id)
         return {"status": "active", "id": key_id}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -217,9 +244,9 @@ def activate_api_key(key_id: str):
 
 
 @app.delete("/api/settings/api-keys/{key_id}")
-def delete_api_key(key_id: str):
+def delete_api_key(key_id: str, provider: Literal["google_places", "serpapi"] = "google_places"):
     try:
-        return api_keys().delete(key_id)
+        return api_keys(provider).delete(key_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception:
@@ -304,14 +331,10 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
     try:
         job.status = "running"
         job.detail = "Consultando perfis no Google"
-        key_repository = api_keys()
-        key_value, key_id = key_repository.active()
-        report = await search_eligible_profiles(
-            key_value,
+        report = await search_places_with_failover(
             request.query,
             minimum_reviews=request.minimum_reviews,
             max_pages=3,
-            on_successful_request=lambda: key_repository.record_usage(key_id),
         )
         job.total = report.scanned
         job.processed = report.scanned
@@ -329,9 +352,11 @@ async def run_search(job_id: str, request: SearchRequest) -> None:
             f"mais de {request.minimum_reviews} avaliações"
         )
     except PlacesQuotaExceeded as exc:
-        api_keys().mark_exhausted(key_id, str(exc))
         job.status = "failed"
-        job.detail = "Esta API do Google Maps atingiu o limite de uso. Abra Configurações, escolha outra API autorizada e tente novamente."
+        job.detail = "Todas as APIs disponíveis do Google Maps atingiram o limite de uso. Cadastre outra chave em Configurações."
+    except PlacesCredentialError as exc:
+        job.status = "failed"
+        job.detail = f"Todas as chaves disponíveis do Google Maps foram recusadas: {exc}"
     except PlacesRequestFailed as exc:
         job.status = "failed"
         job.detail = str(exc)
@@ -350,16 +375,12 @@ async def run_batch_search(job_id: str, request: BatchSearchRequest) -> None:
     try:
         job.status = "running"
         job.total = len(request.queries)
-        key_repository = api_keys()
-        key_value, key_id = key_repository.active()
         for index, query in enumerate(request.queries, start=1):
             job.detail = f'Pesquisando "{query}" ({index}/{job.total})'
-            report = await search_eligible_profiles(
-                key_value,
+            report = await search_places_with_failover(
                 query,
                 minimum_reviews=request.minimum_reviews,
                 max_pages=3,
-                on_successful_request=lambda: key_repository.record_usage(key_id),
             )
             inserted = await asyncio.to_thread(repository().append_new, report.eligible)
             saved += len(inserted)
@@ -378,13 +399,14 @@ async def run_batch_search(job_id: str, request: BatchSearchRequest) -> None:
             f"{duplicates} duplicado(s)"
         )
     except PlacesQuotaExceeded as exc:
-        if key_id:
-            api_keys().mark_exhausted(key_id, str(exc))
         job.status = "failed"
         job.detail = (
             f"Lote interrompido após {job.processed}/{job.total} palavra(s)-chave. "
-            "A API do Google Maps atingiu o limite de uso; os leads concluídos foram salvos."
+            "Todas as APIs disponíveis do Google Maps atingiram o limite; os leads concluídos foram salvos."
         )
+    except PlacesCredentialError as exc:
+        job.status = "failed"
+        job.detail = f"Lote interrompido após {job.processed}/{job.total}: todas as chaves do Google Maps foram recusadas. {exc}"
     except PlacesRequestFailed as exc:
         job.status = "failed"
         job.detail = f"Lote interrompido após {job.processed}/{job.total}: {exc}"

@@ -10,8 +10,9 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 from .config import get_settings
+from .api_key_repository import ApiKeyRepository
 from .google_analysis_models import AnalysisJob, GoogleAnalysisLinkRequest, GoogleAnalysisRequest, GoogleCompanySearchRequest
-from .google_analysis_provider import SerpApiProvider, ProviderError, ProviderNotConfigured, demo_payload, demo_search, normalize_live_evidence
+from .google_analysis_provider import RotatingSerpApiProvider, ProviderError, ProviderNotConfigured, demo_payload, demo_search, normalize_live_evidence
 from .google_analysis_repository import GoogleAnalysisRepository
 from .google_analysis_scoring import methodology_payload, score_profile
 
@@ -60,9 +61,13 @@ def repository() -> GoogleAnalysisRepository:
     return GoogleAnalysisRepository(get_settings())
 
 
-def provider() -> SerpApiProvider:
+def serpapi_keys() -> ApiKeyRepository:
+    return ApiKeyRepository(get_settings(), "serpapi")
+
+
+def provider() -> RotatingSerpApiProvider:
     settings = get_settings()
-    return SerpApiProvider(settings.serpapi_api_key, settings.serpapi_timeout_seconds)
+    return RotatingSerpApiProvider(serpapi_keys(), settings.serpapi_timeout_seconds)
 
 
 def request_key(request: GoogleAnalysisRequest) -> str:
@@ -72,8 +77,10 @@ def request_key(request: GoogleAnalysisRequest) -> str:
 
 @router.get("/capabilities")
 def capabilities():
-    settings = get_settings()
-    live = bool((settings.serpapi_api_key or "").strip())
+    try:
+        live = serpapi_keys().available()
+    except Exception:
+        live = bool((get_settings().serpapi_api_key or "").strip())
     return {
         "provider": "serpapi" if live else "demo",
         "live_configured": live,
