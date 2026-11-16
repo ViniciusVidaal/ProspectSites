@@ -22,6 +22,40 @@ request_jobs: dict[str, str] = {}
 job_lock = asyncio.Lock()
 
 
+def is_unconfirmed(value: Any) -> bool:
+    normalized = str(value or "").strip().casefold()
+    return not normalized or any(marker in normalized for marker in (
+        "localização a confirmar", "localizacao a confirmar",
+        "endereço não informado", "endereco nao informado",
+        "localização não informada", "localizacao nao informada",
+        "categoria a confirmar",
+    ))
+
+
+def profile_category(info: dict[str, Any], fallback: Any = None) -> str:
+    value = info.get("type") or info.get("types") or fallback
+    if isinstance(value, list):
+        value = next((item for item in value if item), fallback)
+    return str(value or "").strip()
+
+
+def resolve_competitive_query(request: GoogleAnalysisRequest, info: dict[str, Any]) -> tuple[str, str, str]:
+    company_name = str(request.company.get("name") or "").strip()
+    category = profile_category(info, request.company.get("category"))
+    profile_address = str(info.get("address") or request.company.get("address") or "").strip()
+    requested_location = str(request.location or "").strip()
+    location = profile_address if is_unconfirmed(requested_location) else requested_location
+    location = location or "Brasil"
+
+    requested_keyword = str(request.keyword or "").strip()
+    keyword_is_company_name = requested_keyword.casefold() == company_name.casefold()
+    if is_unconfirmed(requested_keyword) or (request.company.get("from_lead") and keyword_is_company_name):
+        keyword = category if not is_unconfirmed(category) else company_name
+    else:
+        keyword = requested_keyword
+    return keyword or company_name, location, category
+
+
 def repository() -> GoogleAnalysisRepository:
     return GoogleAnalysisRepository(get_settings())
 
@@ -99,9 +133,9 @@ async def run_analysis(job_id: str, key: str, request: GoogleAnalysisRequest) ->
             info = await live_provider.business_info(request.company)
             job.completed_steps.append("Perfil público coletado")
             job.stage = "Comparando resultados locais"
-            keyword = request.keyword or f"{request.company.get('category') or request.company['name']} em {request.location or 'Brasil'}"
+            keyword, location, category = resolve_competitive_query(request, info)
             results = await asyncio.gather(
-                live_provider.competitors(keyword, request.location, request.depth),
+                live_provider.competitors(keyword, location, request.depth),
                 live_provider.recent_reviews(request.company, info),
                 live_provider.recent_posts(request.company, info),
                 return_exceptions=True,
@@ -138,6 +172,8 @@ async def run_analysis(job_id: str, key: str, request: GoogleAnalysisRequest) ->
                 ) if value
             }
             own = next((entry for entry in competitors if identity_values.intersection({str(entry.get("data_id") or ""), str(entry.get("data_cid") or ""), str(entry.get("place_id") or "")})), None)
+            if own is None:
+                own = next((entry for entry in competitors if str(entry.get("name") or "").strip().casefold() == str(info.get("title") or request.company["name"]).strip().casefold()), None)
             sample = [entry for entry in competitors if entry is not own and not entry.get("is_paid")]
             review_counts = [entry["review_count"] for entry in sample if isinstance(entry.get("review_count"), int)]
             data = {
@@ -145,7 +181,7 @@ async def run_analysis(job_id: str, key: str, request: GoogleAnalysisRequest) ->
                 "profile": {
                     **request.company,
                     "name": info.get("title") or request.company["name"],
-                    "category": (info.get("type") or [request.company.get("category")])[0] if isinstance(info.get("type"), list) else info.get("type") or request.company.get("category"),
+                    "category": category or request.company.get("category"),
                     "address": info.get("address") or request.company.get("address"),
                     "rating": info.get("rating"),
                     "review_count": info.get("reviews"),
@@ -154,8 +190,8 @@ async def run_analysis(job_id: str, key: str, request: GoogleAnalysisRequest) ->
                     "data_cid": info.get("data_cid") or request.company.get("data_cid"),
                 },
                 "competition": {
-                    "keyword": request.keyword,
-                    "location": request.location,
+                    "keyword": keyword,
+                    "location": location,
                     "language_code": request.language_code,
                     "depth": request.depth,
                     "provider": "serpapi",

@@ -49,10 +49,14 @@ function SearchStep({ api, capabilities, leads, onSelect, notify }) {
     if (source === "lead") {
       const lead = leads.find((item) => item.place_id === selectedLead);
       if (!lead) return notify("Selecione um lead existente.");
+      const leadAddress = String(lead.address || "").trim();
+      const leadLocation = [lead.city, lead.state].filter(Boolean).join(", ") || leadAddress;
       onSelect({
         name: lead.company_name,
         category: "Categoria a confirmar",
-        address: [lead.city, lead.state].filter(Boolean).join(", ") || "Localização a confirmar",
+        address: leadAddress || leadLocation || "Localização a confirmar",
+        city: lead.city || "",
+        state: lead.state || "",
         rating: lead.rating,
         review_count: lead.review_count,
         place_id: lead.place_id,
@@ -110,8 +114,10 @@ function SearchStep({ api, capabilities, leads, onSelect, notify }) {
 }
 
 function ConfigureStep({ company, demo, onBack, onStart }) {
-  const suggestedLocation = company.address && company.address !== "Endereço não informado" ? company.address : "Brasil";
-  const [keyword, setKeyword] = useState(`${company.category && company.category !== "Categoria a confirmar" ? company.category : company.name} em ${suggestedLocation}`);
+  const confirmed = (value) => value && !/(confirmar|não informad|nao informad)/i.test(value);
+  const cityAndState = [company.city, company.state].filter(Boolean).join(", ");
+  const suggestedLocation = confirmed(cityAndState) ? cityAndState : confirmed(company.address) ? company.address : "Brasil";
+  const [keyword, setKeyword] = useState(confirmed(company.category) ? company.category : company.name);
   const [location, setLocation] = useState(suggestedLocation);
   const [depth, setDepth] = useState(20);
   return <section className="ga-card ga-config-card">

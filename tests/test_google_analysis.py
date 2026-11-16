@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from backend.google_analysis_provider import demo_payload, normalize_live_evidence
+from backend.google_analysis_models import GoogleAnalysisRequest
+from backend.google_analysis_router import resolve_competitive_query
 from backend.google_analysis_scoring import RULES, score_profile
+from backend.models import Lead
 
 
 def demo_report():
@@ -61,3 +64,27 @@ def test_demo_supplies_five_competitors_for_the_share_image():
     competitors = demo_report()["competition"]["competitors"]
     assert len(competitors) == 5
     assert all(item.get("address") for item in competitors)
+
+
+def test_lead_api_exposes_saved_location_fields():
+    lead = Lead(date="16/11/2026", company_name="Empresa", place_id="place-1", address="Rua A, 10", city="Brasília", state="DF")
+    payload = lead.model_dump()
+    assert payload["address"] == "Rua A, 10"
+    assert payload["city"] == "Brasília"
+    assert payload["state"] == "DF"
+
+
+def test_competitive_query_replaces_frontend_placeholders_with_profile_data():
+    request = GoogleAnalysisRequest(
+        company={"name": "Posto da Torre", "category": "Categoria a confirmar", "address": "Localização a confirmar", "from_lead": True},
+        keyword="Posto da Torre em Localização a confirmar",
+        location="Localização a confirmar",
+    )
+    keyword, location, category = resolve_competitive_query(request, {
+        "title": "Posto da Torre",
+        "type": "Posto de combustível",
+        "address": "Asa Sul, Brasília - DF, 70300-300",
+    })
+    assert keyword == "Posto de combustível"
+    assert location == "Asa Sul, Brasília - DF, 70300-300"
+    assert category == "Posto de combustível"

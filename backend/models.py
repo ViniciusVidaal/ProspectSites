@@ -71,9 +71,9 @@ class Lead(BaseModel):
     email_sent_at: str = ""
     email_status: str = "pending"
     email_error: str = ""
-    address: str = Field(default="", exclude=True)
-    city: str = Field(default="", exclude=True)
-    state: str = Field(default="", exclude=True)
+    address: str = ""
+    city: str = ""
+    state: str = ""
 
     @model_validator(mode="after")
     def normalize_cnpj(self):
