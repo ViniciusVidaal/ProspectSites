@@ -52,14 +52,24 @@ function drawLabel(ctx, text, x, y, color = '#7d8aa0') {
   ctx.letterSpacing = '0px';
 }
 
+function drawFittedText(ctx, value, x, y, maxWidth, { maxSize = 34, minSize = 20, weight = 800, color = '#f5f7fb' } = {}) {
+  const text = String(value ?? '—');
+  let size = maxSize;
+  do {
+    ctx.font = `${weight} ${size}px ${FONT}`;
+    if (ctx.measureText(text).width <= maxWidth) break;
+    size -= 1;
+  } while (size > minSize);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
 function drawMetric(ctx, { x, y, width, label, value, detail, accent = '#4ed3df' }) {
   fillRoundedRect(ctx, x, y, width, 134, 22, '#121925');
   ctx.fillStyle = accent;
   ctx.fillRect(x, y, 5, 134);
   drawLabel(ctx, label, x + 24, y + 34);
-  ctx.fillStyle = '#f5f7fb';
-  ctx.font = `800 34px ${FONT}`;
-  ctx.fillText(fitText(ctx, value, width - 48), x + 24, y + 79);
+  drawFittedText(ctx, value, x + 24, y + 79, width - 48);
   if (detail) {
     ctx.fillStyle = '#8d99ab';
     ctx.font = `500 18px ${FONT}`;
@@ -112,7 +122,7 @@ export function buildGoogleAnalysisImage(report) {
   const company = report.company || {};
   const competition = report.competition || {};
   const competitors = (competition.competitors || []).slice(0, 5);
-  const position = competition.position ? `${competition.position}º` : `Fora dos ${competition.depth || 20}`;
+  const position = competition.position ? `${competition.position}º lugar` : `Fora dos ${competition.depth || 20}`;
   const improvements = Number(report.improvements_count || 0);
 
   const background = ctx.createLinearGradient(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
@@ -224,7 +234,7 @@ export function buildGoogleAnalysisImage(report) {
   ctx.textAlign = 'right';
   ctx.fillStyle = '#4ed3c5';
   ctx.font = `800 17px ${FONT}`;
-  ctx.fillText('PROSPECTSITES', 1016, 1310);
+  ctx.fillText('Dz7 Marketing', 1016, 1310);
   ctx.textAlign = 'left';
 
   return canvas;
