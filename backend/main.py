@@ -214,6 +214,21 @@ def list_lead_history(
         ) from exc
 
 
+@app.get("/api/leads/archived-profiles")
+def list_archived_lead_profiles(
+    limit: int = 100,
+    cursor: str | None = None,
+):
+    try:
+        items, next_cursor = repository().list_archived_profiles(
+            limit=max(1, min(limit, 100)),
+            cursor=cursor,
+        )
+        return {"items": items, "next_cursor": next_cursor}
+    except Exception as exc:
+        raise firestore_http_error("carregar os perfis arquivados", exc) from exc
+
+
 @app.get("/api/settings/api-keys")
 def list_api_keys(provider: Literal["google_places", "serpapi"] = "google_places"):
     try:

@@ -7,6 +7,7 @@ import pytest
 from fastapi import HTTPException, Response
 
 from backend import google_analysis_router as google_router
+from backend.firestore_repository import FirestoreRepository
 from backend.google_analysis_provider import SerpApiProvider, demo_payload, normalize_live_evidence
 from backend.google_analysis_models import AnalysisJob, GoogleAnalysisRequest
 from backend.google_analysis_router import local_competitors, neighborhood_from_address, resolve_competitive_query
@@ -150,3 +151,28 @@ def test_completed_analysis_is_transient_and_consumed_once():
     with pytest.raises(HTTPException) as exc:
         google_router.consume_report(report_id, Response())
     assert exc.value.status_code == 404
+
+
+def test_archived_profile_keeps_only_fields_needed_to_reopen_analysis():
+    lead = Lead(
+        date="16/11/2026",
+        company_name="JP do Gás Vicente Pires",
+        phone="(61) 99999-9999",
+        place_id="place-jp-gas",
+        address="Rua 10 - Vicente Pires, Brasília - DF",
+        neighborhood="Vicente Pires",
+        city="Brasília",
+        state="DF",
+        maps_link="https://maps.google.com/?cid=123",
+        review_count=106,
+        rating=4.9,
+    )
+    archived = FirestoreRepository._blocklist_document(lead)
+    assert archived["place_id"] == "place-jp-gas"
+    assert archived["company_name"] == "JP do Gás Vicente Pires"
+    assert archived["phone_digits"] == "5561999999999"
+    assert archived["address"] == "Rua 10 - Vicente Pires, Brasília - DF"
+    assert archived["neighborhood"] == "Vicente Pires"
+    assert archived["archived"] is True
+    assert "review_count" not in archived
+    assert "rating" not in archived

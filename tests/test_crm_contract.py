@@ -6,8 +6,8 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from backend.crm_models import HermesEvent
-from backend.crm_repository import extract_message_text, normalize_phone
-from backend.crm_router import authenticate_hermes, hermes_event
+from backend.crm_repository import CrmRepository, extract_message_text, normalize_phone
+from backend.crm_router import authenticate_hermes, hermes_archived_prospect, hermes_event
 
 
 class HermesContractTests(unittest.TestCase):
@@ -102,6 +102,46 @@ class HermesContractTests(unittest.TestCase):
 
         self.assertTrue(result["duplicate"])
         repo.save_instance.assert_not_called()
+
+    @patch("backend.crm_router.lead_repository")
+    @patch("backend.crm_router.get_settings")
+    def test_hermes_can_read_archived_profile_by_place_id(self, get_settings, lead_repository):
+        get_settings.return_value = SimpleNamespace(hermes_webhook_secret="secret-123")
+        repo = MagicMock()
+        repo.get_prospect_profile.return_value = {
+            "place_id": "place-123",
+            "company_name": "Empresa Arquivada",
+            "address": "Rua A, 10 - Centro",
+            "archived": True,
+        }
+        lead_repository.return_value = repo
+
+        result = hermes_archived_prospect(
+            "place-123",
+            x_hermes_secret="secret-123",
+            authorization=None,
+        )
+
+        self.assertEqual(result["company_name"], "Empresa Arquivada")
+        self.assertTrue(result["archived"])
+        repo.get_prospect_profile.assert_called_once_with("place-123")
+
+    def test_crm_links_reply_to_archived_profile_by_phone(self):
+        repo = object.__new__(CrmRepository)
+        repo.db = MagicMock()
+        active_collection = MagicMock()
+        active_collection.limit.return_value.stream.return_value = []
+        archived_collection = MagicMock()
+        archived_snapshot = MagicMock()
+        archived_snapshot.id = "place-archived"
+        archived_snapshot.to_dict.return_value = {"place_id": "place-archived"}
+        archived_collection.where.return_value.limit.return_value.stream.return_value = [archived_snapshot]
+        repo.db.collection.side_effect = lambda name: active_collection if name == "leads" else archived_collection
+
+        result = repo._find_existing_lead("5561999999999")
+
+        self.assertEqual(result, "place-archived")
+        archived_collection.where.assert_called_once_with("phone_digits", "==", "5561999999999")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from .crm_models import (
     CrmStageMove, CrmStageReorder, CrmStageUpdate, HermesEvent,
 )
 from .crm_repository import CrmRepository
+from .firestore_repository import FirestoreRepository
 
 
 router = APIRouter(prefix="/api/crm", tags=["CRM"])
@@ -17,6 +18,10 @@ router = APIRouter(prefix="/api/crm", tags=["CRM"])
 
 def repository() -> CrmRepository:
     return CrmRepository(get_settings())
+
+
+def lead_repository() -> FirestoreRepository:
+    return FirestoreRepository(get_settings())
 
 
 @router.get("/dashboard")
@@ -126,14 +131,28 @@ def authenticate_hermes(x_hermes_secret: str | None, authorization: str | None) 
 @router.get("/integrations/hermes/contract")
 def hermes_contract():
     return {
-        "version": "1.0",
+        "version": "1.1",
         "endpoint": "/api/crm/integrations/hermes/events",
+        "archived_profile_endpoint": "/api/crm/integrations/hermes/prospects/{place_id}",
         "authentication": ["X-Hermes-Secret", "Authorization: Bearer <secret>"],
         "events": [
             "message.upsert", "connection.update", "contact.upsert",
             "lead.stage.changed", "heartbeat",
         ],
     }
+
+
+@router.get("/integrations/hermes/prospects/{place_id}")
+def hermes_archived_prospect(
+    place_id: str,
+    x_hermes_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+):
+    authenticate_hermes(x_hermes_secret, authorization)
+    try:
+        return lead_repository().get_prospect_profile(place_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/integrations/hermes/events", status_code=202)

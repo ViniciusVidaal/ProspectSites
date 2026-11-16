@@ -26,6 +26,17 @@ HERMES_WEBHOOK_SECRET=segredo_aleatorio_longo
 O Hermes pode enviar o segredo no header `X-Hermes-Secret` ou em
 `Authorization: Bearer <secret>`.
 
+Quando um contato aceitar a análise gratuita, o Hermes pode recuperar o perfil
+ativo ou arquivado pelo `place_id` em:
+
+```text
+GET /api/crm/integrations/hermes/prospects/{place_id}
+```
+
+O mesmo segredo é obrigatório. O endpoint é somente de leitura e não salva uma
+Análise Google; ele devolve apenas os dados mínimos necessários para reabrir o
+perfil na plataforma.
+
 ## Eventos aceitos
 
 - `message.upsert`: cria/atualiza o contato e persiste uma mensagem.

@@ -685,7 +685,7 @@ function App() {
   const archiveSent = async () => {
     const sentLeads = leads.filter((lead) => lead.sent && !lead.archived);
     if (!sentLeads.length) return setNotice("Não há leads enviados para arquivar.");
-    if (!window.confirm(`Arquivar os ${sentLeads.length} lead(s) já enviados? Eles continuarão salvos no histórico.`)) return;
+    if (!window.confirm(`Arquivar os ${sentLeads.length} lead(s) já enviados? O perfil mínimo continuará disponível para o Hermes e para a Análise Google.`)) return;
     const previous = leads;
     const ids = sentLeads.map((lead) => lead.place_id);
     setLeads((items) => items.filter((lead) => !lead.sent));

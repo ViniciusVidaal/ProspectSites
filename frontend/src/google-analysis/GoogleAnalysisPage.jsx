@@ -42,7 +42,7 @@ function StatusIcon({ state }) {
   return <XCircle size={16}/>;
 }
 
-function SearchStep({ api, capabilities, leads, onSelect, notify }) {
+function SearchStep({ api, capabilities, leads, archivedLoaded, archivedLoading, archivedNextCursor, onLoadArchived, onSelect, notify }) {
   const [source, setSource] = useState("search");
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -95,13 +95,17 @@ function SearchStep({ api, capabilities, leads, onSelect, notify }) {
       <div className="ga-section-title"><span><Search size={19}/></span><div><h2>Encontre o perfil da empresa</h2><p>Busque pelo nome ou reaproveite um lead já salvo.</p></div></div>
       <div className="ga-source-tabs">
         <button className={source === "search" ? "active" : ""} onClick={() => setSource("search")}><Search size={15}/>Nome e endereço</button>
-        <button className={source === "lead" ? "active" : ""} onClick={() => setSource("lead")}><Link2 size={15}/>Lead existente</button>
+        <button className={source === "lead" ? "active" : ""} onClick={() => { setSource("lead"); if (!archivedLoaded) onLoadArchived(); }}><Link2 size={15}/>Lead existente</button>
       </div>
       <form onSubmit={submit}>
         {source === "search" ? <>
           <label><span>Nome da empresa no Google Maps</span><div className="ga-input"><Building2 size={17}/><input required minLength="2" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex: JP do Gás Vicente Pires"/></div></label>
           <label><span>Endereço completo do perfil</span><div className="ga-input"><MapPin size={17}/><input required value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Cole o endereço completo exibido no Google"/></div></label>
-        </> : <label><span>Lead salvo</span><div className="ga-input"><Building2 size={17}/><select required value={selectedLead} onChange={(event) => setSelectedLead(event.target.value)}><option value="">Selecione uma empresa</option>{leads.map((lead) => <option key={lead.place_id} value={lead.place_id}>{lead.company_name} · {lead.review_count || 0} avaliações</option>)}</select></div></label>}
+        </> : <>
+          <label><span>Lead salvo ou perfil arquivado</span><div className="ga-input"><Building2 size={17}/><select required value={selectedLead} onChange={(event) => setSelectedLead(event.target.value)}><option value="">Selecione uma empresa</option>{leads.map((lead) => <option key={lead.place_id} value={lead.place_id}>{lead.company_name}{lead.archived ? " · arquivado" : ` · ${lead.review_count || 0} avaliações`}</option>)}</select></div></label>
+          {archivedLoading && <div className="ga-archived-status"><LoaderCircle className="spin" size={14}/>Carregando perfis arquivados...</div>}
+          {!archivedLoading && archivedNextCursor && <button type="button" className="ga-load-archived" onClick={onLoadArchived}>Carregar mais perfis arquivados</button>}
+        </>}
         <button className="ga-primary" disabled={loading}>{loading ? <LoaderCircle className="spin" size={17}/> : <Search size={17}/>} {loading ? "Buscando..." : source === "lead" ? "Usar este lead" : "Buscar minha empresa"}</button>
       </form>
       {!capabilities.live_configured && <div className="ga-demo-note"><Sparkles size={17}/><div><strong>Modo demonstração ativo</strong><p>A chave da SerpApi não está configurada. A jornada funciona com dados fictícios claramente identificados.</p></div></div>}
@@ -213,10 +217,41 @@ export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
   const [company, setCompany] = useState(null);
   const [job, setJob] = useState(null);
   const [report, setReport] = useState(null);
+  const [archivedLeads, setArchivedLeads] = useState([]);
+  const [archivedCursor, setArchivedCursor] = useState(null);
+  const [archivedLoaded, setArchivedLoaded] = useState(false);
+  const [archivedLoading, setArchivedLoading] = useState(false);
   const [notice, setNotice] = useState(null);
   const notify = (message, success = false) => { setNotice({ message, success }); window.setTimeout(() => setNotice(null), 5000); };
 
   useEffect(() => { api("/api/google-analysis/capabilities").then(setCapabilities).catch((error) => notify(error.message)); }, [api]);
+
+  const availableLeads = useMemo(() => {
+    const byId = new Map(archivedLeads.map((lead) => [lead.place_id, lead]));
+    leads.forEach((lead) => byId.set(lead.place_id, lead));
+    return [...byId.values()].sort((a, b) => a.company_name.localeCompare(b.company_name, "pt-BR"));
+  }, [archivedLeads, leads]);
+
+  const loadArchivedLeads = async () => {
+    if (archivedLoading || (archivedLoaded && !archivedCursor)) return;
+    setArchivedLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: "100" });
+      if (archivedCursor) params.set("cursor", archivedCursor);
+      const result = await api(`/api/leads/archived-profiles?${params.toString()}`);
+      setArchivedLeads((current) => {
+        const byId = new Map(current.map((lead) => [lead.place_id, lead]));
+        (result.items || []).forEach((lead) => byId.set(lead.place_id, lead));
+        return [...byId.values()];
+      });
+      setArchivedCursor(result.next_cursor || null);
+      setArchivedLoaded(true);
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setArchivedLoading(false);
+    }
+  };
 
   const selectCompany = (item) => { setCompany(item); setStep("configure"); };
   const start = async (config) => {
@@ -239,7 +274,7 @@ export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
 
   return <div className="ga-page">
     <header className="ga-hero"><div><span className="ga-kicker"><Sparkles size={14}/>Inteligência local ProspectSites</span><h1>Análise Google</h1><p>Diagnóstico transparente do perfil, reputação e concorrência local.</p></div><div className="ga-storage-note"><ShieldCheck size={16}/><span>Nenhuma análise é salva no banco</span></div></header>
-    {step === "search" ? <SearchStep api={api} capabilities={capabilities} leads={leads} onSelect={selectCompany} notify={notify}/> : step === "configure" ? <ConfigureStep company={company} demo={!capabilities.live_configured} onBack={() => setStep("search")} onStart={start}/> : step === "progress" ? <ProgressStep job={job}/> : report ? <ReportView report={report} onNew={reset} notify={notify}/> : null}
+    {step === "search" ? <SearchStep api={api} capabilities={capabilities} leads={availableLeads} archivedLoaded={archivedLoaded} archivedLoading={archivedLoading} archivedNextCursor={archivedCursor} onLoadArchived={loadArchivedLeads} onSelect={selectCompany} notify={notify}/> : step === "configure" ? <ConfigureStep company={company} demo={!capabilities.live_configured} onBack={() => setStep("search")} onStart={start}/> : step === "progress" ? <ProgressStep job={job}/> : report ? <ReportView report={report} onNew={reset} notify={notify}/> : null}
     {notice && <div className={`ga-notice ${notice.success ? "success" : ""}`}>{notice.success ? <CheckCircle2 size={17}/> : <AlertTriangle size={17}/>}<span>{notice.message}</span><button onClick={() => setNotice(null)}>×</button></div>}
   </div>;
 }

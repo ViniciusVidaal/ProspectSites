@@ -1,6 +1,38 @@
 # Contrato de integração Hermes → ProspectSites CRM
 
-Versão: `1.0`
+Versão: `1.1`
+
+## Recuperação do perfil do lead para Análise Google
+
+Quando o lead aceitar a análise gratuita, o Hermes pode recuperar o perfil mínimo
+que originou a conversa, esteja ele ainda ativo ou já arquivado:
+
+```http
+GET ${PROSPECTSITES_CRM_URL}/api/crm/integrations/hermes/prospects/{place_id}
+X-Hermes-Secret: ${PROSPECTSITES_CRM_SECRET}
+```
+
+Resposta:
+
+```json
+{
+  "place_id": "identificador-google",
+  "company_name": "Nome da empresa",
+  "phone": "+55 61 99999-9999",
+  "address": "Endereço completo do perfil",
+  "neighborhood": "Bairro",
+  "city": "Brasília",
+  "state": "DF",
+  "maps_link": "https://www.google.com/maps/...",
+  "archived": true,
+  "archived_at": "2026-11-16T15:00:00-03:00"
+}
+```
+
+O `place_id` deve acompanhar o lead desde a prospecção inicial. Esse endpoint é
+somente de leitura, usa o mesmo segredo da integração e não cria nem salva uma
+Análise Google. Arquivados antigos podem conter apenas `place_id` e nome; esses
+dois campos já permitem que a Análise Google consulte novamente o perfil público.
 
 ## Prompt pronto para enviar ao Codex responsável pelo Hermes
 
@@ -62,6 +94,7 @@ Eventos aceitos:
 data:
 {
   "message_id": "id-estavel-da-mensagem-no-baileys",
+  "lead_place_id": "place_id recebido da ProspectSites",
   "phone": "5511999999999",
   "contact_name": "Nome do contato",
   "text": "Conteúdo ou legenda da mensagem",
@@ -74,7 +107,8 @@ data:
 data:
 {
   "phone": "5511999999999",
-  "name": "Nome do contato"
+  "name": "Nome do contato",
+  "lead_place_id": "place_id recebido da ProspectSites"
 }
 
 3. connection.update
@@ -113,6 +147,9 @@ Requisitos obrigatórios:
 - Cada evento precisa de event_id estável e único. Em retries, reutilizar o mesmo ID.
 - A mensagem deve usar o ID real e estável fornecido pelo Baileys.
 - Normalizar telefone para dígitos com DDI, sem `@s.whatsapp.net`.
+- Preservar e devolver `lead_place_id` nos eventos sempre que a conversa tiver
+  sido iniciada a partir de um lead da ProspectSites. Esse vínculo permite
+  recuperar o perfil arquivado quando o contato aceitar a análise gratuita.
 - Ignorar grupos, broadcasts e newsletters nesta primeira versão.
 - Preservar direção correta: from_me=true para mensagem enviada pelo número conectado.
 - Não enviar conteúdo de credenciais, QR Code, auth state ou chaves de sessão.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 import unicodedata
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -52,8 +53,40 @@ class FirestoreRepository:
         self.settings = firestore.client().collection(self.settings_collection_name)
 
     @staticmethod
-    def _blocklist_document(lead: Lead) -> dict[str, str]:
-        return {"place_id": lead.place_id, "company_name": lead.company_name}
+    def _blocklist_document(lead: Lead) -> dict[str, Any]:
+        phone_digits = "".join(character for character in lead.phone if character.isdigit())
+        if len(phone_digits) in {10, 11}:
+            phone_digits = f"55{phone_digits}"
+        return {
+            "place_id": lead.place_id,
+            "company_name": lead.company_name,
+            "company_name_normalized": normalize_text(lead.company_name),
+            "phone": lead.phone,
+            "phone_digits": phone_digits,
+            "address": lead.address,
+            "neighborhood": lead.neighborhood,
+            "city": lead.city,
+            "state": lead.state,
+            "maps_link": lead.maps_link,
+            "archived": True,
+            "archived_at": datetime.now(ZoneInfo("America/Sao_Paulo")).isoformat(),
+        }
+
+    @staticmethod
+    def _archived_profile(snapshot) -> dict[str, Any]:
+        data = snapshot.to_dict() or {}
+        return {
+            "place_id": str(data.get("place_id") or snapshot.id),
+            "company_name": str(data.get("company_name") or "Empresa sem nome"),
+            "phone": str(data.get("phone") or ""),
+            "address": str(data.get("address") or ""),
+            "neighborhood": str(data.get("neighborhood") or ""),
+            "city": str(data.get("city") or ""),
+            "state": str(data.get("state") or ""),
+            "maps_link": str(data.get("maps_link") or ""),
+            "archived": True,
+            "archived_at": str(data.get("archived_at") or ""),
+        }
 
     def message_template(self) -> str:
         snapshot = self.settings.document("message_template").get()
@@ -165,6 +198,46 @@ class FirestoreRepository:
         page = [self._lead(item) for item in snapshots[:limit]]
         next_cursor = snapshots[limit - 1].id if len(snapshots) > limit else None
         return page, next_cursor
+
+    def list_archived_profiles(
+        self,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        page_size = max(1, min(limit, 100))
+        reference = self.blocklist.order_by("__name__")
+        if cursor:
+            snapshot = self.blocklist.document(cursor).get()
+            if snapshot.exists:
+                reference = reference.start_after(snapshot)
+        snapshots = list(reference.limit(page_size + 1).stream())
+        page = [self._archived_profile(item) for item in snapshots[:page_size]]
+        next_cursor = snapshots[page_size - 1].id if len(snapshots) > page_size else None
+        return page, next_cursor
+
+    def get_archived_profile(self, place_id: str) -> dict[str, Any]:
+        snapshot = self.blocklist.document(place_id).get()
+        if not snapshot.exists:
+            raise KeyError("Perfil arquivado não encontrado.")
+        return self._archived_profile(snapshot)
+
+    def get_prospect_profile(self, place_id: str) -> dict[str, Any]:
+        active = self.collection.document(place_id).get()
+        if active.exists:
+            lead = self._lead(active)
+            return {
+                "place_id": lead.place_id,
+                "company_name": lead.company_name,
+                "phone": lead.phone,
+                "address": lead.address,
+                "neighborhood": lead.neighborhood,
+                "city": lead.city,
+                "state": lead.state,
+                "maps_link": lead.maps_link,
+                "archived": False,
+                "archived_at": "",
+            }
+        return self.get_archived_profile(place_id)
 
     def append_new(self, leads: list[Lead]) -> list[Lead]:
         unique = {lead.place_id: lead for lead in leads if lead.place_id}
@@ -350,7 +423,7 @@ class FirestoreRepository:
         return len(existing)
 
     def compact_legacy_archived_leads(self) -> int:
-        """One-time migration to records with only Google Place ID and company name."""
+        """One-time migration from legacy archived leads to compact prospect profiles."""
         marker = self.migrations.document("archive_blocklist_v1")
         if marker.get().exists:
             return 0

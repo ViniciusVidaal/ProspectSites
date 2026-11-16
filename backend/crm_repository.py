@@ -246,7 +246,11 @@ class CrmRepository:
             "name": str(data.get("name") or data.get("contact_name") or current.get("name") or phone),
             "stage_id": current.get("stage_id") or self._default_stage_id(),
             "instance_names": instance_names,
-            "prospect_lead_id": current.get("prospect_lead_id") or self._find_existing_lead(phone),
+            "prospect_lead_id": (
+                current.get("prospect_lead_id")
+                or str(data.get("lead_place_id") or data.get("place_id") or "").strip()
+                or self._find_existing_lead(phone)
+            ),
             "updated_at": firestore.SERVER_TIMESTAMP,
         }
         if not current:
@@ -310,6 +314,7 @@ class CrmRepository:
             "pushName": data.get("contact_name") or data.get("name") or phone,
             "messageTimestamp": timestamp,
             "messageType": data.get("message_type") or data.get("type") or "conversation",
+            "prospect_lead_id": str(data.get("lead_place_id") or data.get("place_id") or "").strip(),
             "message": {"conversation": str(data.get("text") or data.get("body") or "[Mensagem]")},
         }
         return self.ingest_message(instance_name, raw_message)
@@ -322,6 +327,15 @@ class CrmRepository:
             candidates = (data.get("phone", ""), data.get("cnpj_phone", ""))
             if any(normalize_phone(candidate) == phone for candidate in candidates if candidate):
                 return snapshot.id
+        archived = list(
+            self.db.collection("archived_lead_ids")
+            .where("phone_digits", "==", phone)
+            .limit(1)
+            .stream()
+        )
+        if archived:
+            data = archived[0].to_dict() or {}
+            return str(data.get("place_id") or archived[0].id)
         return None
 
     def ingest_message(self, instance_name: str, message: dict) -> dict:
@@ -354,7 +368,11 @@ class CrmRepository:
         existing = contact_ref.get()
         existing_data = existing.to_dict() or {}
         instance_names = sorted(set(existing_data.get("instance_names", [])) | {instance_name})
-        lead_id = existing_data.get("prospect_lead_id") or self._find_existing_lead(phone)
+        lead_id = (
+            existing_data.get("prospect_lead_id")
+            or str(message.get("prospect_lead_id") or "").strip()
+            or self._find_existing_lead(phone)
+        )
         latest_contact_at = existing_data.get("last_interaction_at")
         is_latest_contact = not isinstance(latest_contact_at, datetime) or message_time >= latest_contact_at
         existing_first_contact = existing_data.get("first_contact_at")
