@@ -85,8 +85,15 @@ def whatsapp_url(phone: str) -> str:
     return f"https://wa.me/{digits}"
 
 
+def address_component(components: list[dict], accepted_types: set[str], short: bool = False) -> str:
+    item = next((entry for entry in components if set(entry.get("types", [])) & accepted_types), None)
+    if not item:
+        return ""
+    return str((item.get("shortText") if short else None) or item.get("longText") or "")
+
+
 async def hydrate_lead_location(client: httpx.AsyncClient, api_key: str, lead: Lead) -> Lead:
-    if lead.city and lead.state:
+    if lead.city and lead.state and lead.neighborhood:
         return lead
     response = await client.get(
         f"https://places.googleapis.com/v1/places/{lead.place_id}",
@@ -99,9 +106,10 @@ async def hydrate_lead_location(client: httpx.AsyncClient, api_key: str, lead: L
     ensure_places_response(response)
     place = response.json()
     components = place.get("addressComponents", [])
-    city = next((item.get("longText", "") for item in components if set(item.get("types", [])) & {"locality", "administrative_area_level_2"}), "")
-    state = next((item.get("shortText") or item.get("longText", "") for item in components if "administrative_area_level_1" in item.get("types", [])), "")
-    return lead.model_copy(update={"address": place.get("formattedAddress", ""), "city": city, "state": state})
+    neighborhood = address_component(components, {"neighborhood", "sublocality", "sublocality_level_1", "administrative_area_level_3"})
+    city = address_component(components, {"locality", "administrative_area_level_2"})
+    state = address_component(components, {"administrative_area_level_1"}, short=True)
+    return lead.model_copy(update={"address": place.get("formattedAddress", ""), "neighborhood": neighborhood, "city": city, "state": state})
 
 
 async def search_eligible_profiles(
@@ -173,8 +181,9 @@ async def search_eligible_profiles(
                     or ""
                 )
                 components = place.get("addressComponents", [])
-                city = next((item.get("longText", "") for item in components if set(item.get("types", [])) & {"locality", "administrative_area_level_2"}), "")
-                state = next((item.get("shortText") or item.get("longText", "") for item in components if "administrative_area_level_1" in item.get("types", [])), "")
+                neighborhood = address_component(components, {"neighborhood", "sublocality", "sublocality_level_1", "administrative_area_level_3"})
+                city = address_component(components, {"locality", "administrative_area_level_2"})
+                state = address_component(components, {"administrative_area_level_1"}, short=True)
                 if not phone and platform != "Instagram":
                     continue
                 report.eligible.append(
@@ -192,6 +201,7 @@ async def search_eligible_profiles(
                         maps_link=place.get("googleMapsUri", ""),
                         place_id=place_id,
                         address=place.get("formattedAddress", ""),
+                        neighborhood=neighborhood,
                         city=city,
                         state=state,
                     )

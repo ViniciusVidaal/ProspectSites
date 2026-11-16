@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+import re
 from statistics import median
 from typing import Any
+import unicodedata
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -40,12 +42,46 @@ def profile_category(info: dict[str, Any], fallback: Any = None) -> str:
     return str(value or "").strip()
 
 
-def resolve_competitive_query(request: GoogleAnalysisRequest, info: dict[str, Any]) -> tuple[str, str, str]:
+def normalize_locality(value: Any) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    return " ".join("".join(char for char in normalized if not unicodedata.combining(char)).casefold().split())
+
+
+def neighborhood_from_address(address: Any) -> str:
+    matches = [
+        value.strip()
+        for value in re.findall(r"\s-\s([^,]+)(?=,)", str(address or ""))
+        if not re.fullmatch(r"[A-Za-z]{2}", value.strip())
+    ]
+    return matches[-1] if matches else ""
+
+
+def local_competitors(entries: list[dict[str, Any]], neighborhood: str, own_ids: set[str], own_name: str) -> list[dict[str, Any]]:
+    if not neighborhood:
+        return entries
+    target = normalize_locality(neighborhood)
+    filtered = []
+    for entry in entries:
+        entry_ids = {str(entry.get("data_id") or ""), str(entry.get("data_cid") or ""), str(entry.get("place_id") or "")}
+        is_own = bool(own_ids.intersection(entry_ids)) or normalize_locality(entry.get("name")) == normalize_locality(own_name)
+        if is_own or target in normalize_locality(entry.get("address")):
+            filtered.append({**entry, "position": len(filtered) + 1})
+    return filtered
+
+
+def resolve_competitive_query(request: GoogleAnalysisRequest, info: dict[str, Any]) -> tuple[str, str, str, str]:
     company_name = str(request.company.get("name") or "").strip()
     category = profile_category(info, request.company.get("category"))
     profile_address = str(info.get("address") or request.company.get("address") or "").strip()
     requested_location = str(request.location or "").strip()
-    location = profile_address if is_unconfirmed(requested_location) else requested_location
+    neighborhood = str(request.company.get("neighborhood") or neighborhood_from_address(profile_address)).strip()
+    city = str(request.company.get("city") or "").strip()
+    state = str(request.company.get("state") or "").strip()
+    local_parts = []
+    for value in (neighborhood, city, state):
+        if value and normalize_locality(value) not in {normalize_locality(item) for item in local_parts}:
+            local_parts.append(value)
+    location = ", ".join(local_parts) if neighborhood else profile_address if is_unconfirmed(requested_location) else requested_location
     location = location or "Brasil"
 
     requested_keyword = str(request.keyword or "").strip()
@@ -54,7 +90,7 @@ def resolve_competitive_query(request: GoogleAnalysisRequest, info: dict[str, An
         keyword = category if not is_unconfirmed(category) else company_name
     else:
         keyword = requested_keyword
-    return keyword or company_name, location, category
+    return keyword or company_name, location, category, neighborhood
 
 
 def repository() -> GoogleAnalysisRepository:
@@ -140,7 +176,7 @@ async def run_analysis(job_id: str, key: str, request: GoogleAnalysisRequest) ->
             info = await live_provider.business_info(request.company)
             job.completed_steps.append("Perfil público coletado")
             job.stage = "Comparando resultados locais"
-            keyword, location, category = resolve_competitive_query(request, info)
+            keyword, location, category, neighborhood = resolve_competitive_query(request, info)
             results = await asyncio.gather(
                 live_provider.competitors(keyword, location, request.depth),
                 live_provider.recent_reviews(request.company, info),
@@ -178,6 +214,12 @@ async def run_analysis(job_id: str, key: str, request: GoogleAnalysisRequest) ->
                     request.company.get("data_id"), request.company.get("data_cid"), request.company.get("place_id"),
                 ) if value
             }
+            competitors = local_competitors(
+                competitors,
+                neighborhood,
+                identity_values,
+                str(info.get("title") or request.company["name"]),
+            )
             own = next((entry for entry in competitors if identity_values.intersection({str(entry.get("data_id") or ""), str(entry.get("data_cid") or ""), str(entry.get("place_id") or "")})), None)
             if own is None:
                 own = next((entry for entry in competitors if str(entry.get("name") or "").strip().casefold() == str(info.get("title") or request.company["name"]).strip().casefold()), None)
@@ -199,6 +241,7 @@ async def run_analysis(job_id: str, key: str, request: GoogleAnalysisRequest) ->
                 "competition": {
                     "keyword": keyword,
                     "location": location,
+                    "neighborhood": neighborhood or None,
                     "language_code": request.language_code,
                     "depth": request.depth,
                     "provider": "serpapi",

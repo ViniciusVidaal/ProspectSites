@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from backend.google_analysis_provider import demo_payload, normalize_live_evidence
 from backend.google_analysis_models import GoogleAnalysisRequest
-from backend.google_analysis_router import resolve_competitive_query
+from backend.google_analysis_router import local_competitors, neighborhood_from_address, resolve_competitive_query
 from backend.google_analysis_scoring import RULES, score_profile
 from backend.models import Lead
 
@@ -67,24 +67,40 @@ def test_demo_supplies_five_competitors_for_the_share_image():
 
 
 def test_lead_api_exposes_saved_location_fields():
-    lead = Lead(date="16/11/2026", company_name="Empresa", place_id="place-1", address="Rua A, 10", city="Brasília", state="DF")
+    lead = Lead(date="16/11/2026", company_name="Empresa", place_id="place-1", address="Rua A, 10", neighborhood="Asa Sul", city="Brasília", state="DF")
     payload = lead.model_dump()
     assert payload["address"] == "Rua A, 10"
+    assert payload["neighborhood"] == "Asa Sul"
     assert payload["city"] == "Brasília"
     assert payload["state"] == "DF"
 
 
 def test_competitive_query_replaces_frontend_placeholders_with_profile_data():
     request = GoogleAnalysisRequest(
-        company={"name": "Posto da Torre", "category": "Categoria a confirmar", "address": "Localização a confirmar", "from_lead": True},
+        company={"name": "Posto da Torre", "category": "Categoria a confirmar", "address": "Localização a confirmar", "city": "Brasília", "state": "DF", "from_lead": True},
         keyword="Posto da Torre em Localização a confirmar",
         location="Localização a confirmar",
     )
-    keyword, location, category = resolve_competitive_query(request, {
+    keyword, location, category, neighborhood = resolve_competitive_query(request, {
         "title": "Posto da Torre",
         "type": "Posto de combustível",
-        "address": "Asa Sul, Brasília - DF, 70300-300",
+        "address": "s/n Asa Sul 05 F 10 - Asa Sul, Brasília - DF, 70300-300",
     })
     assert keyword == "Posto de combustível"
-    assert location == "Asa Sul, Brasília - DF, 70300-300"
+    assert location == "Asa Sul, Brasília, DF"
     assert category == "Posto de combustível"
+    assert neighborhood == "Asa Sul"
+
+
+def test_vicente_pires_scope_excludes_competitors_from_other_neighborhoods():
+    address = "St. Hab. Vicente Pires loja 3 VICENTE PIRES - Vicente Pires, Brasília - DF, 72007-535"
+    assert neighborhood_from_address(address) == "Vicente Pires"
+    entries = [
+        {"position": 1, "name": "JP do Gás Vicente Pires", "place_id": "own", "address": address},
+        {"position": 2, "name": "Gás Local", "place_id": "local", "address": "Rua 10 - Vicente Pires, Brasília - DF"},
+        {"position": 3, "name": "Gás Asa Sul", "place_id": "asa", "address": "CLS 210 - Asa Sul, Brasília - DF"},
+        {"position": 4, "name": "Gás Ponte Alta", "place_id": "gama", "address": "Ponte Alta Norte (Gama), Brasília - DF"},
+    ]
+    filtered = local_competitors(entries, "Vicente Pires", {"own"}, "JP do Gás Vicente Pires")
+    assert [item["name"] for item in filtered] == ["JP do Gás Vicente Pires", "Gás Local"]
+    assert [item["position"] for item in filtered] == [1, 2]

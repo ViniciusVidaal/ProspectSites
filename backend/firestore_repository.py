@@ -16,7 +16,7 @@ LEAD_FIELDS = (
     "date", "company_name", "phone", "whatsapp_link", "current_site",
     "site_platform", "review_count", "rating", "maps_link", "place_id",
     "sent", "sent_at", "archived",
-    "address", "city", "state", "cnpj_captured", "cnpj_phone",
+    "address", "neighborhood", "city", "state", "cnpj_captured", "cnpj_phone",
     "registry_email", "cnpj_confidence", "cnpj_status", "cnpj_checked",
     "cnpj_lookup_at",
     "email_sent", "email_sent_at", "email_status", "email_error",

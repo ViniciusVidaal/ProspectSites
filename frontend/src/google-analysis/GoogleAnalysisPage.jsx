@@ -10,6 +10,13 @@ import "./google-analysis.css";
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+function neighborhoodFromAddress(address = "") {
+  const matches = [...String(address).matchAll(/\s-\s([^,]+)(?=,)/g)]
+    .map((match) => match[1].trim())
+    .filter((value) => !/^[A-Z]{2}$/i.test(value));
+  return matches.length ? matches.at(-1) : "";
+}
+
 function errorMessage(detail) {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) return detail.map((item) => item?.msg || "Dados inválidos").join(" · ");
@@ -50,11 +57,13 @@ function SearchStep({ api, capabilities, leads, onSelect, notify }) {
       const lead = leads.find((item) => item.place_id === selectedLead);
       if (!lead) return notify("Selecione um lead existente.");
       const leadAddress = String(lead.address || "").trim();
-      const leadLocation = [lead.city, lead.state].filter(Boolean).join(", ") || leadAddress;
+      const neighborhood = String(lead.neighborhood || neighborhoodFromAddress(leadAddress)).trim();
+      const leadLocation = [neighborhood, lead.city, lead.state].filter((value, index, items) => value && items.findIndex((item) => item?.toLocaleLowerCase("pt-BR") === value.toLocaleLowerCase("pt-BR")) === index).join(", ") || leadAddress;
       onSelect({
         name: lead.company_name,
         category: "Categoria a confirmar",
         address: leadAddress || leadLocation || "Localização a confirmar",
+        neighborhood,
         city: lead.city || "",
         state: lead.state || "",
         rating: lead.rating,
@@ -115,8 +124,10 @@ function SearchStep({ api, capabilities, leads, onSelect, notify }) {
 
 function ConfigureStep({ company, demo, onBack, onStart }) {
   const confirmed = (value) => value && !/(confirmar|não informad|nao informad)/i.test(value);
-  const cityAndState = [company.city, company.state].filter(Boolean).join(", ");
-  const suggestedLocation = confirmed(cityAndState) ? cityAndState : confirmed(company.address) ? company.address : "Brasil";
+  const neighborhood = company.neighborhood || neighborhoodFromAddress(company.address);
+  const localParts = [neighborhood, company.city, company.state].filter((value, index, items) => value && items.findIndex((item) => item?.toLocaleLowerCase("pt-BR") === value.toLocaleLowerCase("pt-BR")) === index);
+  const localArea = localParts.join(", ");
+  const suggestedLocation = confirmed(localArea) ? localArea : confirmed(company.address) ? company.address : "Brasil";
   const [keyword, setKeyword] = useState(confirmed(company.category) ? company.category : company.name);
   const [location, setLocation] = useState(suggestedLocation);
   const [depth, setDepth] = useState(20);

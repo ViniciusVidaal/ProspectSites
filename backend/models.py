@@ -73,6 +73,7 @@ class Lead(BaseModel):
     email_status: str = "pending"
     email_error: str = ""
     address: str = ""
+    neighborhood: str = ""
     city: str = ""
     state: str = ""
 
