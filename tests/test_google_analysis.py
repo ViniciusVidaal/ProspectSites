@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from backend.google_analysis_provider import demo_payload, normalize_live_evidence
+import asyncio
+from unittest.mock import AsyncMock
+
+from backend.google_analysis_provider import SerpApiProvider, demo_payload, normalize_live_evidence
 from backend.google_analysis_models import GoogleAnalysisRequest
 from backend.google_analysis_router import local_competitors, neighborhood_from_address, resolve_competitive_query
 from backend.google_analysis_scoring import RULES, score_profile
@@ -104,3 +107,14 @@ def test_vicente_pires_scope_excludes_competitors_from_other_neighborhoods():
     filtered = local_competitors(entries, "Vicente Pires", {"own"}, "JP do Gás Vicente Pires")
     assert [item["name"] for item in filtered] == ["JP do Gás Vicente Pires", "Gás Local"]
     assert [item["position"] for item in filtered] == [1, 2]
+
+
+def test_manual_company_search_uses_name_and_full_address():
+    provider = SerpApiProvider("x" * 32)
+    provider._get = AsyncMock(return_value={"local_results": []})
+    asyncio.run(provider.search_companies(
+        "JP do Gás Vicente Pires",
+        "St. Hab. Vicente Pires loja 3 - Vicente Pires, Brasília - DF, 72007-535",
+    ))
+    params = provider._get.await_args.args[0]
+    assert params["q"] == "JP do Gás Vicente Pires St. Hab. Vicente Pires loja 3 - Vicente Pires, Brasília - DF, 72007-535"

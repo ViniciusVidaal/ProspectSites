@@ -4,7 +4,7 @@ Módulo isolado para buscar perfis públicos, aplicar metodologia própria e ver
 
 ## Estado funcional
 
-- Busca por nome, cidade e refinamento; seleção explícita da empresa.
+- Busca manual por nome e endereço completo do perfil; seleção explícita da empresa.
 - Início pelo cadastro de um lead existente, sem repetir a busca de seleção.
 - Palavra-chave, localização e profundidade editáveis antes da comparação.
 - Trabalho assíncrono com etapas reais e bloqueio de clique duplicado para a mesma análise em andamento.

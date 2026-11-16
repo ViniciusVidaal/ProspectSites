@@ -89,8 +89,8 @@ class SerpApiProvider:
             "provider": "serpapi",
         }
 
-    async def search_companies(self, name: str, city: str = "", refine: str = "") -> list[dict[str, Any]]:
-        query = " ".join(part.strip() for part in (name, refine, city) if part.strip())
+    async def search_companies(self, name: str, address: str = "") -> list[dict[str, Any]]:
+        query = " ".join(part.strip() for part in (name, address) if part.strip())
         payload = await self._get({"engine": "google_maps", "type": "search", "q": query, "hl": "pt-BR", "gl": "br"})
         return [self._company(item) for item in (payload.get("local_results") or [])[:10]]
 
@@ -168,11 +168,11 @@ class RotatingSerpApiProvider(SerpApiProvider):
                 raise
 
 
-def demo_search(name: str, city: str = "") -> list[dict[str, Any]]:
-    base_city = city.strip() or "Brasília, DF"
+def demo_search(name: str, address: str = "") -> list[dict[str, Any]]:
+    base_address = address.strip() or "Brasília, DF"
     return [
-        {"name": name.strip() or "Empresa Demonstração", "category": "Agência de marketing digital", "address": f"Região central, {base_city}", "rating": 4.8, "review_count": 38, "place_id": "demo-profile-001", "data_id": "demo-data-001", "maps_url": "https://www.google.com/maps/search/?api=1&query=" + quote_plus(name), "provider": "demo", "demo": True},
-        {"name": f"{name.strip()} Centro", "category": "Serviços empresariais", "address": f"Centro, {base_city}", "rating": 4.5, "review_count": 17, "place_id": "demo-profile-002", "data_id": "demo-data-002", "maps_url": "https://www.google.com/maps/search/?api=1&query=" + quote_plus(f"{name} {base_city}"), "provider": "demo", "demo": True},
+        {"name": name.strip() or "Empresa Demonstração", "category": "Agência de marketing digital", "address": base_address, "rating": 4.8, "review_count": 38, "place_id": "demo-profile-001", "data_id": "demo-data-001", "maps_url": "https://www.google.com/maps/search/?api=1&query=" + quote_plus(f"{name} {base_address}"), "provider": "demo", "demo": True},
+        {"name": f"{name.strip()} Centro", "category": "Serviços empresariais", "address": base_address, "rating": 4.5, "review_count": 17, "place_id": "demo-profile-002", "data_id": "demo-data-002", "maps_url": "https://www.google.com/maps/search/?api=1&query=" + quote_plus(f"{name} {base_address}"), "provider": "demo", "demo": True},
     ]
 
 

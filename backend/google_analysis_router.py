@@ -129,9 +129,9 @@ def capabilities():
 @router.post("/companies/search")
 async def search_companies(request: GoogleCompanySearchRequest, demo: bool = Query(default=False)):
     if demo:
-        return {"items": demo_search(request.name, request.city), "provider": "demo", "demo": True}
+        return {"items": demo_search(request.name, request.address), "provider": "demo", "demo": True}
     try:
-        items = await provider().search_companies(request.name, request.city, request.refine)
+        items = await provider().search_companies(request.name, request.address)
         return {"items": items, "provider": "serpapi", "demo": False}
     except ProviderNotConfigured as exc:
         raise HTTPException(status_code=503, detail=f"{exc} Use o modo demonstração ou configure as credenciais no servidor.") from exc

@@ -45,8 +45,7 @@ function StatusIcon({ state }) {
 function SearchStep({ api, capabilities, leads, onSelect, notify }) {
   const [source, setSource] = useState("search");
   const [name, setName] = useState("");
-  const [city, setCity] = useState("");
-  const [refine, setRefine] = useState("");
+  const [address, setAddress] = useState("");
   const [selectedLead, setSelectedLead] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -80,10 +79,10 @@ function SearchStep({ api, capabilities, leads, onSelect, notify }) {
       const demo = !capabilities.live_configured;
       const payload = await api(`/api/google-analysis/companies/search?demo=${demo}`, {
         method: "POST",
-        body: JSON.stringify({ name, city, refine }),
+        body: JSON.stringify({ name, address }),
       });
       setResults(payload.items || []);
-      if (!(payload.items || []).length) notify("Nenhuma empresa encontrada. Refine por bairro ou rua.");
+      if (!(payload.items || []).length) notify("Nenhuma empresa encontrada. Confira o nome e o endereço completo.");
     } catch (error) {
       notify(error.message);
     } finally {
@@ -95,16 +94,13 @@ function SearchStep({ api, capabilities, leads, onSelect, notify }) {
     <section className="ga-card ga-search-card">
       <div className="ga-section-title"><span><Search size={19}/></span><div><h2>Encontre o perfil da empresa</h2><p>Busque pelo nome ou reaproveite um lead já salvo.</p></div></div>
       <div className="ga-source-tabs">
-        <button className={source === "search" ? "active" : ""} onClick={() => setSource("search")}><Search size={15}/>Nome e cidade</button>
+        <button className={source === "search" ? "active" : ""} onClick={() => setSource("search")}><Search size={15}/>Nome e endereço</button>
         <button className={source === "lead" ? "active" : ""} onClick={() => setSource("lead")}><Link2 size={15}/>Lead existente</button>
       </div>
       <form onSubmit={submit}>
         {source === "search" ? <>
-          <label><span>Nome da empresa no Google Maps</span><div className="ga-input"><Building2 size={17}/><input required minLength="2" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex: ProspectSites"/></div></label>
-          <div className="ga-form-row">
-            <label><span>Cidade (opcional)</span><div className="ga-input"><MapPin size={17}/><input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Ex: Brasília, DF"/></div></label>
-            <label><span>Bairro ou rua para refinar</span><div className="ga-input"><Target size={17}/><input value={refine} onChange={(event) => setRefine(event.target.value)} placeholder="Ex: Asa Norte"/></div></label>
-          </div>
+          <label><span>Nome da empresa no Google Maps</span><div className="ga-input"><Building2 size={17}/><input required minLength="2" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex: JP do Gás Vicente Pires"/></div></label>
+          <label><span>Endereço completo do perfil</span><div className="ga-input"><MapPin size={17}/><input required value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Cole o endereço completo exibido no Google"/></div></label>
         </> : <label><span>Lead salvo</span><div className="ga-input"><Building2 size={17}/><select required value={selectedLead} onChange={(event) => setSelectedLead(event.target.value)}><option value="">Selecione uma empresa</option>{leads.map((lead) => <option key={lead.place_id} value={lead.place_id}>{lead.company_name} · {lead.review_count || 0} avaliações</option>)}</select></div></label>}
         <button className="ga-primary" disabled={loading}>{loading ? <LoaderCircle className="spin" size={17}/> : <Search size={17}/>} {loading ? "Buscando..." : source === "lead" ? "Usar este lead" : "Buscar minha empresa"}</button>
       </form>

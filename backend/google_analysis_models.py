@@ -7,8 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 class GoogleCompanySearchRequest(BaseModel):
     name: str = Field(min_length=2, max_length=180)
-    city: str = Field(default="", max_length=120)
-    refine: str = Field(default="", max_length=160)
+    address: str = Field(min_length=5, max_length=260)
 
 
 class GoogleAnalysisRequest(BaseModel):
