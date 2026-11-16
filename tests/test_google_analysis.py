@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-from io import BytesIO
-
-from pypdf import PdfReader
-
-from backend.google_analysis_pdf import build_report_pdf
 from backend.google_analysis_provider import demo_payload, normalize_live_evidence
 from backend.google_analysis_scoring import RULES, score_profile
 
@@ -62,11 +57,7 @@ def test_missing_serpapi_fields_stay_unknown():
     assert evidence["review_recency"]["state"] == "unknown"
 
 
-def test_pdf_is_downloadable_and_contains_selectable_text():
-    pdf = build_report_pdf(demo_report())
-    assert pdf.startswith(b"%PDF")
-    reader = PdfReader(BytesIO(pdf))
-    text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    assert "ProspectSites" in text
-    assert "Empresa Demonstra" in text
-    assert "DOCUMENTO DE DEMONSTRA" in text
+def test_demo_supplies_five_competitors_for_the_share_image():
+    competitors = demo_report()["competition"]["competitors"]
+    assert len(competitors) == 5
+    assert all(item.get("address") for item in competitors)

@@ -94,7 +94,7 @@ class SerpApiProvider:
         entries = [{
             "position": item.get("position"), "name": item.get("title"), "rating": item.get("rating"),
             "review_count": item.get("reviews"), "data_id": item.get("data_id"), "data_cid": item.get("data_cid"),
-            "place_id": item.get("place_id"), "is_paid": False,
+            "place_id": item.get("place_id"), "address": item.get("address"), "category": item.get("type"), "is_paid": False,
         } for item in (payload.get("local_results") or [])[:depth]]
         return entries, (payload.get("search_metadata") or {}).get("google_maps_url")
 
@@ -202,9 +202,11 @@ def demo_payload(company: dict[str, Any], keyword: str, location: str, depth: in
     }
     competitors = [
         {"position": 1, "name": company.get("name"), "rating": rating, "review_count": reviews, "place_id": company.get("place_id"), "is_paid": False},
-        {"position": 2, "name": "Concorrente Aurora", "rating": 4.7, "review_count": 21, "place_id": "demo-comp-1", "is_paid": False},
-        {"position": 3, "name": "Concorrente Horizonte", "rating": 4.6, "review_count": 12, "place_id": "demo-comp-2", "is_paid": False},
-        {"position": 4, "name": "Concorrente Prisma", "rating": 4.3, "review_count": 8, "place_id": "demo-comp-3", "is_paid": False},
+        {"position": 2, "name": "Concorrente Aurora", "address": f"Centro, {location or 'Brasil'}", "category": company.get("category"), "rating": 4.7, "review_count": 21, "place_id": "demo-comp-1", "is_paid": False},
+        {"position": 3, "name": "Concorrente Horizonte", "address": f"Região Norte, {location or 'Brasil'}", "category": company.get("category"), "rating": 4.6, "review_count": 12, "place_id": "demo-comp-2", "is_paid": False},
+        {"position": 4, "name": "Concorrente Prisma", "address": f"Região Sul, {location or 'Brasil'}", "category": company.get("category"), "rating": 4.3, "review_count": 8, "place_id": "demo-comp-3", "is_paid": False},
+        {"position": 5, "name": "Concorrente Vértice", "address": f"Região Leste, {location or 'Brasil'}", "category": company.get("category"), "rating": 4.2, "review_count": 7, "place_id": "demo-comp-4", "is_paid": False},
+        {"position": 6, "name": "Concorrente Origem", "address": f"Região Oeste, {location or 'Brasil'}", "category": company.get("category"), "rating": 4.1, "review_count": 5, "place_id": "demo-comp-5", "is_paid": False},
     ]
     return {
         "evidence": evidence,

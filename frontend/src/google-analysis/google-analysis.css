@@ -74,6 +74,7 @@
 .ga-score-gauge.insufficient strong { font-size:28px; }
 .ga-score-gauge.insufficient span { max-width:70px; text-align:center; }
 .ga-report-actions { grid-column:1/-1; display:flex; gap:8px; padding-top:18px; border-top:1px solid var(--line); }
+.ga-report-actions button:disabled { cursor:wait; opacity:.72; }
 .ga-report-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
 .ga-report-metrics article { min-height:108px; display:flex; align-items:flex-start; gap:10px; padding:17px; border:1px solid var(--line); border-radius:15px; background:var(--panel); box-shadow:var(--shadow); }
 .ga-report-metrics article>svg { color:var(--accent-strong); }

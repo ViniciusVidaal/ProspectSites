@@ -1,6 +1,6 @@
 # Análise Google — ProspectSites
 
-Módulo isolado para buscar perfis públicos, aplicar metodologia própria e versionada, comparar concorrentes, salvar histórico e gerar PDF.
+Módulo isolado para buscar perfis públicos, aplicar metodologia própria e versionada, comparar concorrentes, salvar histórico e gerar uma imagem vertical para compartilhamento.
 
 ## Estado funcional
 
@@ -13,7 +13,8 @@ Módulo isolado para buscar perfis públicos, aplicar metodologia própria e ver
 - Checklist com 16 itens e cinco estados possíveis.
 - SerpApi para detalhes, concorrência, avaliações recentes/respostas e postagens.
 - Histórico no Firestore em `google_profile_analyses`.
-- PDF direto, com texto selecionável, regenerado dos dados salvos sem nova consulta.
+- PNG vertical de 1080 × 1350 px, gerado somente no navegador para download e envio pelo WhatsApp.
+- A imagem não é enviada ao backend nem armazenada no Firestore; o banco guarda apenas os dados estruturados da análise.
 - Vínculo manual com lead, sem envio automático de WhatsApp ou e-mail.
 - Modo de demonstração identificado quando a chave SerpApi não está configurada.
 

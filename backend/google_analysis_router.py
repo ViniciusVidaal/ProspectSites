@@ -8,11 +8,9 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from fastapi.responses import Response
 
 from .config import get_settings
 from .google_analysis_models import AnalysisJob, GoogleAnalysisLinkRequest, GoogleAnalysisRequest, GoogleCompanySearchRequest
-from .google_analysis_pdf import build_report_pdf
 from .google_analysis_provider import SerpApiProvider, ProviderError, ProviderNotConfigured, demo_payload, demo_search, normalize_live_evidence
 from .google_analysis_repository import GoogleAnalysisRepository
 from .google_analysis_scoring import methodology_payload, score_profile
@@ -230,20 +228,3 @@ def link_report_to_lead(report_id: str, request: GoogleAnalysisLinkRequest):
         return repository().link_lead(report_id, request.place_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.get("/reports/{report_id}/pdf")
-def download_report(report_id: str):
-    try:
-        report = repository().get(report_id)
-        content = build_report_pdf(report)
-        safe_name = "".join(char if char.isalnum() else "-" for char in report["company"]["name"]).strip("-").lower()
-        return Response(
-            content=content,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="analise-google-{safe_name or report_id}.pdf"'},
-        )
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Não foi possível gerar o PDF: {exc}") from exc

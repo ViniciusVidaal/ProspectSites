@@ -4,6 +4,7 @@ import {
   Clock3, Download, ExternalLink, FileSearch, History, Link2, LoaderCircle,
   MapPin, Play, RefreshCw, Search, ShieldCheck, Sparkles, Star, Target, XCircle, Coins
 } from "lucide-react";
+import { downloadGoogleAnalysisImage } from "./reportImage";
 import "./google-analysis.css";
 
 
@@ -148,6 +149,7 @@ function ScoreGauge({ report }) {
 function ReportView({ apiBase, report, leads, onNew, onLinked, notify }) {
   const api = useMemo(() => createApi(apiBase), [apiBase]);
   const [leadId, setLeadId] = useState(report.lead_place_id || "");
+  const [downloading, setDownloading] = useState(false);
   const competition = report.competition || {};
   const positionText = competition.position ? `${competition.position}º` : `Fora dos ${competition.depth || 0}`;
   const linkLead = async () => {
@@ -158,12 +160,23 @@ function ReportView({ apiBase, report, leads, onNew, onLinked, notify }) {
       notify("Análise vinculada ao lead.", true);
     } catch (error) { notify(error.message); }
   };
+  const downloadImage = async () => {
+    setDownloading(true);
+    try {
+      await downloadGoogleAnalysisImage(report);
+      notify("Imagem PNG criada. Ela não foi salva no banco.", true);
+    } catch (error) {
+      notify(error.message || "Não foi possível gerar a imagem.");
+    } finally {
+      setDownloading(false);
+    }
+  };
   return <div className="ga-report">
     {report.demo && <div className="ga-demo-banner"><Sparkles size={17}/><strong>Relatório de demonstração</strong><span>Todos os dados abaixo são fictícios.</span></div>}
     <section className="ga-report-hero ga-card">
       <div className="ga-report-company"><span>Diagnóstico de Perfil da Empresa no Google</span><h1>{report.company.name}</h1><p><MapPin size={14}/>{report.company.address || "Localização não informada"} · <Clock3 size={14}/>{new Date(report.collected_at).toLocaleString("pt-BR")}</p>{report.company.maps_url && <a href={report.company.maps_url} target="_blank" rel="noopener noreferrer">Abrir perfil <ExternalLink size={13}/></a>}</div>
       <ScoreGauge report={report}/>
-      <div className="ga-report-actions"><a className="ga-primary" href={`${apiBase}/api/google-analysis/reports/${report.id}/pdf`}><Download size={16}/>Baixar PDF</a><button onClick={onNew}><RefreshCw size={16}/>Nova análise</button></div>
+      <div className="ga-report-actions"><button className="ga-primary" onClick={downloadImage} disabled={downloading}>{downloading ? <LoaderCircle className="spin" size={16}/> : <Download size={16}/>} {downloading ? "Criando PNG..." : "Baixar imagem PNG"}</button><button onClick={onNew}><RefreshCw size={16}/>Nova análise</button></div>
     </section>
     <section className="ga-report-metrics">
       <article><Star size={18}/><div><small>Nota dos clientes</small><strong>{report.company.rating ?? "—"}</strong><span>{report.company.review_count ?? 0} avaliações</span></div></article>
@@ -186,7 +199,7 @@ function HistoryView({ api, onOpen, notify }) {
   const [loading, setLoading] = useState(true);
   const load = async () => { setLoading(true); try { setItems((await api("/api/google-analysis/reports?limit=50")).items || []); } catch (error) { notify(error.message); } finally { setLoading(false); } };
   useEffect(() => { load(); }, []);
-  return <section className="ga-card ga-history"><div className="ga-section-title"><span><History size={19}/></span><div><h2>Histórico de análises</h2><p>PDFs são regenerados dos dados salvos, sem nova consulta paga.</p></div></div>{loading ? <div className="ga-loading"><LoaderCircle className="spin" size={20}/>Carregando histórico...</div> : <div className="ga-history-list">{items.map((item) => <button key={item.id} onClick={() => onOpen(item.id)}><div><strong>{item.company?.name}</strong><span>{new Date(item.collected_at).toLocaleString("pt-BR")} · {item.demo ? "Demonstração" : item.provider}</span></div><b>{item.score_reliable ? `${item.score}/100` : "Parcial"}</b><ChevronRight size={16}/></button>)}{!items.length && <div className="ga-empty"><History size={27}/><strong>Nenhuma análise salva</strong><span>Conclua a primeira análise para alimentar o histórico.</span></div>}</div>}</section>;
+  return <section className="ga-card ga-history"><div className="ga-section-title"><span><History size={19}/></span><div><h2>Histórico de análises</h2><p>O PNG é criado somente no navegador e nunca é salvo no banco.</p></div></div>{loading ? <div className="ga-loading"><LoaderCircle className="spin" size={20}/>Carregando histórico...</div> : <div className="ga-history-list">{items.map((item) => <button key={item.id} onClick={() => onOpen(item.id)}><div><strong>{item.company?.name}</strong><span>{new Date(item.collected_at).toLocaleString("pt-BR")} · {item.demo ? "Demonstração" : item.provider}</span></div><b>{item.score_reliable ? `${item.score}/100` : "Parcial"}</b><ChevronRight size={16}/></button>)}{!items.length && <div className="ga-empty"><History size={27}/><strong>Nenhuma análise salva</strong><span>Conclua a primeira análise para alimentar o histórico.</span></div>}</div>}</section>;
 }
 
 export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
