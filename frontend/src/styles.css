@@ -190,6 +190,9 @@ html[data-theme="dark"] .whatsapp-action.sent { background: #253329; color: #88d
 .active-badge { color: var(--accent-strong); background: var(--accent-soft); }
 .archived-badge { color: var(--muted); background: var(--soft); }
 .settings-page { padding-top: 26px; }
+.api-provider-tabs { display:flex; width:max-content; max-width:100%; gap:5px; margin:14px 0; padding:4px; border:1px solid var(--line); border-radius:12px; background:var(--soft); }
+.api-provider-tabs button { min-height:40px; display:inline-flex; align-items:center; gap:7px; padding:0 16px; border:0; border-radius:9px; color:var(--muted); background:transparent; font-size:11px; font-weight:800; }
+.api-provider-tabs button.active { color:var(--text); background:var(--panel); box-shadow:var(--shadow); }
 .settings-notice { margin: 14px 0; padding: 13px 16px; border: 1px solid var(--line); border-radius: 11px; font-size: 12px; font-weight: 700; }
 .settings-notice.success { color: var(--accent-strong); border-color: var(--accent); background: var(--accent-soft); }
 .settings-notice.error { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }

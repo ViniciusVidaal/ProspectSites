@@ -117,6 +117,7 @@ function App() {
   const [historyCursors, setHistoryCursors] = useState([null]);
   const [historyNextCursor, setHistoryNextCursor] = useState(null);
   const [apiKeys, setApiKeys] = useState([]);
+  const [apiProvider, setApiProvider] = useState("google_places");
   const [apiName, setApiName] = useState("");
   const [apiValue, setApiValue] = useState("");
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -269,12 +270,12 @@ function App() {
 
   const loadApiKeys = async () => {
     setSettingsLoading(true);
-    try { setApiKeys(await api("/api/settings/api-keys")); }
+    try { setApiKeys(await api(`/api/settings/api-keys?provider=${apiProvider}`)); }
     catch (error) { setSettingsNotice(error.message); }
     finally { setSettingsLoading(false); }
   };
 
-  useEffect(() => { if (activeView === "settings") loadApiKeys(); }, [activeView]);
+  useEffect(() => { if (activeView === "settings") loadApiKeys(); }, [activeView, apiProvider]);
 
   const loadDeletionHistory = async () => {
     setDeletionHistoryLoading(true);
@@ -289,7 +290,7 @@ function App() {
     event.preventDefault();
     setSettingsLoading(true);
     try {
-      await api("/api/settings/api-keys", { method: "POST", body: JSON.stringify({ name: apiName, api_key: apiValue, make_active: true }) });
+      await api("/api/settings/api-keys", { method: "POST", body: JSON.stringify({ name: apiName, api_key: apiValue, make_active: true, provider: apiProvider }) });
       setApiName(""); setApiValue(""); setSettingsNotice("API salva e ativada com sucesso."); await loadApiKeys();
     } catch (error) { setSettingsNotice(error.message); }
     finally { setSettingsLoading(false); }
@@ -297,7 +298,7 @@ function App() {
 
   const activateApiKey = async (key) => {
     setSettingsLoading(true);
-    try { await api(`/api/settings/api-keys/${encodeURIComponent(key.id)}/activate`, { method: "POST" }); setSettingsNotice(`${key.name} está ativa agora.`); await loadApiKeys(); }
+    try { await api(`/api/settings/api-keys/${encodeURIComponent(key.id)}/activate?provider=${apiProvider}`, { method: "POST" }); setSettingsNotice(`${key.name} está ativa agora.`); await loadApiKeys(); }
     catch (error) { setSettingsNotice(error.message); }
     finally { setSettingsLoading(false); }
   };
@@ -306,7 +307,7 @@ function App() {
     if (!window.confirm(`Excluir a API "${key.name}"? Essa ação não pode ser desfeita.`)) return;
     setSettingsLoading(true);
     try {
-      const result = await api(`/api/settings/api-keys/${encodeURIComponent(key.id)}`, { method: "DELETE" });
+      const result = await api(`/api/settings/api-keys/${encodeURIComponent(key.id)}?provider=${apiProvider}`, { method: "DELETE" });
       setSettingsNotice(result.activated_name ? `API excluída. ${result.activated_name} está ativa agora.` : "API excluída com sucesso.");
       await loadApiKeys();
     } catch (error) { setSettingsNotice(error.message); }
@@ -314,6 +315,7 @@ function App() {
   };
 
   const chooseView = (view) => { setActiveView(view); setSidebarOpen(false); };
+  const apiProviderLabel = apiProvider === "google_places" ? "Google Maps/Places" : "SerpApi";
   const toggleSidebar = () => {
     if (window.innerWidth <= 700) setSidebarOpen(true);
     else setSidebarCollapsed((current) => !current);
@@ -906,9 +908,10 @@ function App() {
       </section>}
 
       {activeView === "settings" && <section className="settings-page">
-        <div className="history-hero"><div className="panel-title"><span><Settings size={19}/></span><div><h1>Configurações de API</h1><p>Cadastre chaves autorizadas e escolha qual API do Google Maps será usada nas pesquisas.</p></div></div></div>
+        <div className="history-hero"><div className="panel-title"><span><Settings size={19}/></span><div><h1>Configurações de API</h1><p>Cadastre chaves por provedor. Em caso de limite ou credencial recusada, o sistema ativa a próxima e repete a consulta.</p></div></div></div>
+        <div className="api-provider-tabs"><button className={apiProvider === "google_places" ? "active" : ""} onClick={() => { setApiProvider("google_places"); setSettingsNotice(""); setApiName(""); setApiValue(""); }}><MapPinned size={16}/>Google Maps/Places</button><button className={apiProvider === "serpapi" ? "active" : ""} onClick={() => { setApiProvider("serpapi"); setSettingsNotice(""); setApiName(""); setApiValue(""); }}><Search size={16}/>SerpApi</button></div>
         {settingsNotice && <div className={`settings-notice ${settingsNotice.includes("sucesso") || settingsNotice.includes("ativa agora") ? "success" : "error"}`}>{settingsNotice}</div>}
-        <div className="settings-grid"><form className="settings-card" onSubmit={saveApiKey}><div className="panel-title"><span><KeyRound size={18}/></span><div><h2>Nova API</h2><p>A chave é enviada com segurança ao backend e nunca é exibida novamente.</p></div></div><label><span>Nome para identificar a API</span><input value={apiName} onChange={(event) => setApiName(event.target.value)} placeholder="Ex: API Vinícius" required /></label><label><span>Chave da API do Google Maps</span><input type="password" value={apiValue} onChange={(event) => setApiValue(event.target.value)} placeholder="Cole a chave aqui" required autoComplete="off" /></label><button className="primary" disabled={settingsLoading}><KeyRound size={17}/>{settingsLoading ? "Salvando..." : "Salvar e usar esta API"}</button></form><div className="settings-card api-status-card"><div className="panel-title"><span><AlertTriangle size={18}/></span><div><h2>Status das APIs</h2><p>Uma chave marcada como esgotada precisa ser ativada novamente manualmente após a renovação.</p></div></div><div className="api-key-list">{apiKeys.map((key) => <article key={key.id}><div><strong>{key.name}</strong><small>{key.status === "active" ? "Em uso" : key.status === "exhausted" ? `Limite atingido · renovação estimada: ${key.renews_on || "consulte o Google Cloud"}` : "Disponível"}</small>{key.last_error && <small className="api-error">{key.last_error}</small>}</div><div>{key.status === "active" ? <span className="active-badge">Ativa</span> : <button className="activate-api" disabled={settingsLoading} onClick={() => activateApiKey(key)}>Usar esta API</button>}</div></article>)}{!settingsLoading && !apiKeys.length && <div className="empty"><KeyRound size={28}/><strong>Nenhuma API cadastrada</strong><span>Cadastre uma chave para gerenciá-la por aqui.</span></div>}</div></div></div>
+        <div className="settings-grid"><form className="settings-card" onSubmit={saveApiKey}><div className="panel-title"><span><KeyRound size={18}/></span><div><h2>Nova chave {apiProviderLabel}</h2><p>A chave é enviada ao backend e nunca é exibida novamente.</p></div></div><label><span>Nome para identificar a chave</span><input value={apiName} onChange={(event) => setApiName(event.target.value)} placeholder="Ex: Chave reserva 2" required /></label><label><span>Chave da {apiProviderLabel}</span><input type="password" value={apiValue} onChange={(event) => setApiValue(event.target.value)} placeholder="Cole a chave aqui" required autoComplete="off" /></label><button className="primary" disabled={settingsLoading}><KeyRound size={17}/>{settingsLoading ? "Salvando..." : "Salvar e usar esta chave"}</button></form><div className="settings-card api-status-card"><div className="panel-title"><span><AlertTriangle size={18}/></span><div><h2>Chaves da {apiProviderLabel}</h2><p>A troca automática ocorre apenas por limite atingido ou credencial recusada.</p></div></div><div className="api-key-list">{apiKeys.map((key) => <article key={key.id}><div><strong>{key.name}</strong><small>{key.status === "active" ? "Em uso" : key.status === "exhausted" ? `Limite atingido · renovação estimada: ${key.renews_on || "consulte o provedor"}` : key.status === "invalid" ? "Credencial recusada" : "Disponível para rotação"}</small>{key.last_error && <small className="api-error">{key.last_error}</small>}</div><div>{key.status === "active" ? <span className="active-badge">Ativa</span> : <button className="activate-api" disabled={settingsLoading} onClick={() => activateApiKey(key)}>Usar esta chave</button>}</div></article>)}{!settingsLoading && !apiKeys.length && <div className="empty"><KeyRound size={28}/><strong>Nenhuma chave cadastrada</strong><span>A variável do servidor continua como fallback até você cadastrar uma chave aqui.</span></div>}</div></div></div>
       </section>}
 
       {activeView === "history" && <section className="history-page"><div className="history-hero"><div className="panel-title"><span><History size={19}/></span><div><h1>Histórico de exclusões</h1><p>Leads excluídos manualmente do painel. Você pode restaurá-los a qualquer momento.</p></div></div><span className="history-count">{deletedLeads.filter((lead) => !lead.restored_at).length} excluído(s)</span></div><div className="leads-panel history-table-panel"><div className="table-wrap"><table><thead><tr><th>Empresa</th><th>Contato</th><th>Coletado em</th><th>Excluído em</th><th>Situação</th><th>Ação</th></tr></thead><tbody>{deletedLeads.map((lead) => <tr key={lead.place_id}><td><strong>{lead.company_name}</strong></td><td>{lead.phone || <span className="muted">Não informado</span>}</td><td>{lead.date || "—"}</td><td>{lead.deleted_at ? new Date(lead.deleted_at).toLocaleString("pt-BR") : "—"}</td><td>{lead.restored_at ? <span className="active-badge">Restaurado</span> : <span className="archived-badge">Excluído</span>}</td><td>{lead.restored_at ? <span className="muted">Já está na base</span> : <button className="activate-api" onClick={() => restoreLead(lead)}><Undo2 size={14}/>Restaurar</button>}</td></tr>)}</tbody></table>{!deletionHistoryLoading && !deletedLeads.length && <div className="empty"><History size={30}/><strong>Nenhuma exclusão registrada</strong><span>Quando você excluir um lead individualmente, ele aparecerá aqui.</span></div>}</div></div></section>}
@@ -953,7 +956,7 @@ function App() {
           </>}
         </aside>
       </div>}
-      {activeView === "settings" && apiKeys.length > 0 && <section className="api-usage-section"><h2>Uso estimado no Prospect Sites</h2><p>Contagem das requisições feitas por este sistema neste mês. Chamadas feitas fora daqui não entram neste cálculo.</p><div className="api-usage-list">{apiKeys.map((key) => <article key={key.id}><div><strong>{key.name}</strong><small>{key.status === "active" ? "Em uso" : key.status === "exhausted" ? "Franquia mensal esgotada" : "Disponível"}</small></div><div className="api-usage-numbers"><b>{key.requests_used || 0} / {key.monthly_request_limit || 1000}</b><span>{key.requests_remaining ?? 1000} restantes</span><small>Renova em {formatDate(key.next_renewal_on)}</small></div><button className="delete-api" disabled={settingsLoading} onClick={() => deleteApiKey(key)} title={`Excluir ${key.name}`}><Trash2 size={14}/>Excluir</button></article>)}</div></section>}
+      {activeView === "settings" && apiKeys.length > 0 && <section className="api-usage-section"><h2>Uso registrado · {apiProviderLabel}</h2><p>Contagem das requisições bem-sucedidas feitas por este sistema. Chamadas externas não entram neste cálculo.</p><div className="api-usage-list">{apiKeys.map((key) => <article key={key.id}><div><strong>{key.name}</strong><small>{key.status === "active" ? "Em uso" : key.status === "exhausted" ? "Limite atingido" : key.status === "invalid" ? "Credencial recusada" : "Disponível"}</small></div><div className="api-usage-numbers"><b>{key.requests_used || 0}{key.monthly_request_limit ? ` / ${key.monthly_request_limit}` : " requisições"}</b>{key.requests_remaining !== null && <span>{key.requests_remaining} restantes</span>}<small>{key.monthly_request_limit ? `Renova em ${formatDate(key.next_renewal_on)}` : "Limite depende do plano contratado"}</small></div><button className="delete-api" disabled={settingsLoading} onClick={() => deleteApiKey(key)} title={`Excluir ${key.name}`}><Trash2 size={14}/>Excluir</button></article>)}</div></section>}
       </div></main>
   );
 }

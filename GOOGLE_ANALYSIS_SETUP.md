@@ -12,6 +12,7 @@ Módulo isolado para buscar perfis públicos, aplicar metodologia própria e ver
 - Nota normalizada sobre itens avaliáveis e cobertura mínima de 60%.
 - Checklist com 16 itens e cinco estados possíveis.
 - SerpApi para detalhes, concorrência, avaliações recentes/respostas e postagens.
+- Concorrência limitada ao bairro extraído do endereço; resultados de outras regiões são descartados.
 - Histórico no Firestore em `google_profile_analyses`.
 - PNG vertical de 1080 × 1350 px, gerado somente no navegador para download e envio pelo WhatsApp.
 - O PNG destaca sempre o site profissional e mais uma melhoria real identificada no checklist.
@@ -28,7 +29,9 @@ SERPAPI_API_KEY=
 SERPAPI_TIMEOUT_SECONDS=30
 ```
 
-A chave é usada somente pelo servidor. Ela não é devolvida pela API, enviada ao frontend, persistida no Firestore ou registrada em logs. Sem a chave, `/api/google-analysis/capabilities` informa `live_configured: false` e a interface usa fixtures fictícias.
+A chave é usada somente pelo servidor e nunca é devolvida pela API nem registrada em logs. A variável `SERPAPI_API_KEY` permanece como fallback; chaves cadastradas pela tela são guardadas na coleção protegida do backend e a listagem pública retorna somente nome, status e uso. Sem nenhuma chave disponível, `/api/google-analysis/capabilities` informa `live_configured: false` e a interface usa fixtures fictícias.
+
+Também é possível cadastrar várias chaves em **Configurações > SerpApi**. Quando uma chave cadastrada atinge o limite ou é recusada, o backend ativa a próxima disponível e repete a consulta. O mesmo mecanismo existe separadamente para **Google Maps/Places**. Falhas comuns de rede não desativam chaves.
 
 ## Matriz de cobertura da SerpApi
 
