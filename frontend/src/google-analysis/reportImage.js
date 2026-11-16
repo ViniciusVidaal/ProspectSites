@@ -141,18 +141,18 @@ const IMPROVEMENT_ACTIONS = {
 export function selectImageImprovements(report) {
   const checklist = Array.isArray(report.checklist) ? report.checklist : [];
   const priorities = Array.isArray(report.priorities) ? report.priorities : [];
-  const website = checklist.find((item) => item.key === 'website') || {
-    key: 'website', label: 'Site ou link', state: 'absent', weight: 6,
-  };
   const stateOrder = { absent: 0, improve: 1, unknown: 2, not_applicable: 3, good: 4 };
-  const second = checklist
-    .filter((item) => item.key !== 'website' && ['absent', 'improve'].includes(item.state))
-    .sort((a, b) => (stateOrder[a.state] - stateOrder[b.state]) || ((b.weight || 0) - (a.weight || 0)))[0]
-    || checklist.find((item) => item.key !== 'website' && item.state === 'unknown')
-    || checklist.find((item) => item.key === 'description')
-    || { key: 'description', label: 'Descrição', state: 'improve', weight: 7 };
+  const actionable = checklist
+    .filter((item) => ['absent', 'improve'].includes(item.state))
+    .sort((a, b) => {
+      if (a.key === 'website' && b.key !== 'website') return -1;
+      if (b.key === 'website' && a.key !== 'website') return 1;
+      return (stateOrder[a.state] - stateOrder[b.state]) || ((b.weight || 0) - (a.weight || 0));
+    });
+  const reportedCount = Number(report.improvements_count);
+  const displayLimit = Number.isFinite(reportedCount) ? Math.max(0, Math.min(2, reportedCount)) : Math.min(2, actionable.length);
 
-  return [website, second].map((item) => {
+  return actionable.slice(0, displayLimit).map((item) => {
     const priority = priorities.find((entry) => entry.key === item.key);
     return {
       key: item.key,
@@ -189,6 +189,8 @@ export function buildGoogleAnalysisImage(report) {
   const competition = report.competition || {};
   const competitors = (competition.competitors || []).slice(0, 5);
   const improvementsForImage = selectImageImprovements(report);
+  const hasImprovements = improvementsForImage.length > 0;
+  const competitionOffset = hasImprovements ? 0 : -150;
   const position = formatMapPosition(competition.position);
   const improvements = Number(report.improvements_count || 0);
 
@@ -242,39 +244,45 @@ export function buildGoogleAnalysisImage(report) {
   drawMetric(ctx, { x: 548, y: 402, width: metricWidth, label: 'Itens pra corrigir', value: `${improvements} de 16`, accent: '#ff7d67' });
   drawMetric(ctx, { x: 790, y: 402, width: metricWidth, label: 'Avaliações', value: String(company.review_count ?? 0), accent: '#a88cff' });
 
-  ctx.fillStyle = '#f4f6fa';
-  ctx.font = `900 26px ${FONT}`;
-  ctx.fillText('2 melhorias prioritárias', 64, 582);
-  drawImprovement(ctx, improvementsForImage[0], 0, 64, 606, 468);
-  drawImprovement(ctx, improvementsForImage[1], 1, 548, 606, 468);
+  if (hasImprovements) {
+    ctx.fillStyle = '#f4f6fa';
+    ctx.font = `900 26px ${FONT}`;
+    ctx.fillText(`${improvementsForImage.length} ${improvementsForImage.length === 1 ? 'melhoria prioritária' : 'melhorias prioritárias'}`, 64, 582);
+    if (improvementsForImage.length === 1) {
+      drawImprovement(ctx, improvementsForImage[0], 0, 64, 606, 952);
+    } else {
+      drawImprovement(ctx, improvementsForImage[0], 0, 64, 606, 468);
+      drawImprovement(ctx, improvementsForImage[1], 1, 548, 606, 468);
+    }
+  }
 
   ctx.fillStyle = '#f4f6fa';
   ctx.font = `900 30px ${FONT}`;
-  ctx.fillText('Posição e concorrentes', 64, 752);
+  ctx.fillText('Posição e concorrentes', 64, 752 + competitionOffset);
   ctx.fillStyle = '#8d99ab';
   ctx.font = `500 19px ${FONT}`;
-  ctx.fillText(fitText(ctx, `${competition.keyword || 'Busca local'} · ${competition.location || company.address || 'Localização consultada'}`, 952), 64, 782);
+  ctx.fillText(fitText(ctx, `${competition.keyword || 'Busca local'} · ${competition.location || company.address || 'Localização consultada'}`, 952), 64, 782 + competitionOffset);
 
-  fillRoundedRect(ctx, 64, 806, 952, 90, 22, '#14212a');
-  fillRoundedRect(ctx, 84, 822, 112, 58, 29, '#153e36');
+  fillRoundedRect(ctx, 64, 806 + competitionOffset, 952, 90, 22, '#14212a');
+  fillRoundedRect(ctx, 84, 822 + competitionOffset, 112, 58, 29, '#153e36');
   ctx.fillStyle = '#69e0b4';
   ctx.font = `900 22px ${FONT}`;
   ctx.textAlign = 'center';
-  ctx.fillText(formatMapPosition(competition.position, true), 140, 858);
+  ctx.fillText(formatMapPosition(competition.position, true), 140, 858 + competitionOffset);
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f5f7fb';
   ctx.font = `800 24px ${FONT}`;
-  ctx.fillText(fitText(ctx, company.name, 530), 220, 841);
+  ctx.fillText(fitText(ctx, company.name, 530), 220, 841 + competitionOffset);
   ctx.fillStyle = '#94a1b3';
   ctx.font = `500 18px ${FONT}`;
-  ctx.fillText(fitText(ctx, company.address || 'Endereço não informado', 530), 220, 870);
+  ctx.fillText(fitText(ctx, company.address || 'Endereço não informado', 530), 220, 870 + competitionOffset);
   ctx.fillStyle = '#f4bf45';
   ctx.font = `800 20px ${FONT}`;
-  ctx.fillText(`★ ${ratingText(company.rating)}  ·  ${company.review_count ?? 0} avaliações`, 790, 856);
+  ctx.fillText(`★ ${ratingText(company.rating)}  ·  ${company.review_count ?? 0} avaliações`, 790, 856 + competitionOffset);
 
   const rowHeight = 67;
   competitors.forEach((item, index) => {
-    const y = 912 + index * rowHeight;
+    const y = 912 + competitionOffset + index * rowHeight;
     fillRoundedRect(ctx, 64, y, 952, 58, 16, index % 2 ? '#111823' : '#121b27');
     fillRoundedRect(ctx, 84, y + 9, 96, 40, 20, '#202b39');
     ctx.fillStyle = '#8ad9c1';
@@ -298,10 +306,10 @@ export function buildGoogleAnalysisImage(report) {
   });
 
   if (!competitors.length) {
-    fillRoundedRect(ctx, 64, 912, 952, 90, 18, '#111823');
+    fillRoundedRect(ctx, 64, 912 + competitionOffset, 952, 90, 18, '#111823');
     ctx.fillStyle = '#94a1b3';
     ctx.font = `600 20px ${FONT}`;
-    ctx.fillText('Não foi possível listar concorrentes nesta consulta.', 92, 965);
+    ctx.fillText('Não foi possível listar concorrentes nesta consulta.', 92, 965 + competitionOffset);
   }
 
   ctx.textAlign = 'right';

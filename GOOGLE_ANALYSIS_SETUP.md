@@ -15,7 +15,7 @@ Módulo isolado para buscar perfis públicos, aplicar metodologia própria e ver
 - Concorrência limitada ao bairro extraído do endereço; resultados de outras regiões são descartados.
 - Histórico no Firestore em `google_profile_analyses`.
 - PNG vertical de 1080 × 1350 px, gerado somente no navegador para download e envio pelo WhatsApp.
-- O PNG destaca sempre o site profissional e mais uma melhoria real identificada no checklist.
+- O PNG mostra no máximo duas melhorias reais e nunca ultrapassa `improvements_count`; site profissional recebe prioridade somente quando estiver ausente ou precisar melhorar.
 - A imagem não é enviada ao backend nem armazenada no Firestore; o banco guarda apenas os dados estruturados da análise.
 - Vínculo manual com lead, sem envio automático de WhatsApp ou e-mail.
 - Modo de demonstração identificado quando a chave SerpApi não está configurada.
