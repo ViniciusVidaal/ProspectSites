@@ -4,7 +4,7 @@ import {
   Clock3, Download, ExternalLink, FileSearch, History, Link2, LoaderCircle,
   MapPin, Play, RefreshCw, Search, ShieldCheck, Sparkles, Star, Target, XCircle, Coins
 } from "lucide-react";
-import { downloadGoogleAnalysisImage } from "./reportImage";
+import { downloadGoogleAnalysisImage, formatMapPosition } from "./reportImage";
 import "./google-analysis.css";
 
 
@@ -157,7 +157,7 @@ function ReportView({ apiBase, report, leads, onNew, onLinked, notify }) {
   const [leadId, setLeadId] = useState(report.lead_place_id || "");
   const [downloading, setDownloading] = useState(false);
   const competition = report.competition || {};
-  const positionText = competition.position ? `${competition.position}º` : `Fora dos ${competition.depth || 0}`;
+  const positionText = formatMapPosition(competition.position);
   const linkLead = async () => {
     if (!leadId) return notify("Selecione um lead para vincular.");
     try {

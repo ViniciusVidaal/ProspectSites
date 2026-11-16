@@ -114,6 +114,13 @@ function safeFileName(value) {
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'empresa';
 }
 
+export function formatMapPosition(value, compact = false) {
+  const position = Number(value);
+  const isTopTwenty = Number.isInteger(position) && position >= 1 && position <= 20;
+  if (!isTopTwenty) return '20+';
+  return compact ? `POS. ${position}` : `${position}º lugar`;
+}
+
 export function buildGoogleAnalysisImage(report) {
   const canvas = document.createElement('canvas');
   canvas.width = IMAGE_WIDTH;
@@ -122,7 +129,7 @@ export function buildGoogleAnalysisImage(report) {
   const company = report.company || {};
   const competition = report.competition || {};
   const competitors = (competition.competitors || []).slice(0, 5);
-  const position = competition.position ? `${competition.position}º lugar` : `Fora dos ${competition.depth || 20}`;
+  const position = formatMapPosition(competition.position);
   const improvements = Number(report.improvements_count || 0);
 
   const background = ctx.createLinearGradient(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
@@ -187,7 +194,7 @@ export function buildGoogleAnalysisImage(report) {
   ctx.fillStyle = '#69e0b4';
   ctx.font = `900 22px ${FONT}`;
   ctx.textAlign = 'center';
-  ctx.fillText(competition.position ? `POS. ${competition.position}` : 'SEM POS.', 140, 722);
+  ctx.fillText(formatMapPosition(competition.position, true), 140, 722);
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f5f7fb';
   ctx.font = `800 24px ${FONT}`;
