@@ -121,6 +121,65 @@ export function formatMapPosition(value, compact = false) {
   return compact ? `POS. ${position}` : `${position}º lugar`;
 }
 
+const IMPROVEMENT_ACTIONS = {
+  website: 'Criar um site profissional e conectado ao perfil.',
+  description: 'Completar a descrição com serviços e diferenciais.',
+  phone: 'Adicionar ou revisar o telefone de contato.',
+  hours: 'Atualizar os dias e horários de atendimento.',
+  primary_category: 'Revisar a categoria principal do negócio.',
+  additional_categories: 'Adicionar categorias secundárias relevantes.',
+  products_services: 'Cadastrar os principais produtos ou serviços.',
+  attributes: 'Completar os atributos disponíveis no perfil.',
+  photos: 'Publicar fotos atuais e profissionais do negócio.',
+  posts: 'Publicar uma novidade ou atualização recente.',
+  rating: 'Trabalhar as causas das avaliações negativas.',
+  review_volume: 'Criar uma rotina para conquistar novas avaliações.',
+  review_recency: 'Voltar a receber avaliações recentes de clientes.',
+  review_responses: 'Responder às avaliações que ainda estão sem retorno.',
+};
+
+export function selectImageImprovements(report) {
+  const checklist = Array.isArray(report.checklist) ? report.checklist : [];
+  const priorities = Array.isArray(report.priorities) ? report.priorities : [];
+  const website = checklist.find((item) => item.key === 'website') || {
+    key: 'website', label: 'Site ou link', state: 'absent', weight: 6,
+  };
+  const stateOrder = { absent: 0, improve: 1, unknown: 2, not_applicable: 3, good: 4 };
+  const second = checklist
+    .filter((item) => item.key !== 'website' && ['absent', 'improve'].includes(item.state))
+    .sort((a, b) => (stateOrder[a.state] - stateOrder[b.state]) || ((b.weight || 0) - (a.weight || 0)))[0]
+    || checklist.find((item) => item.key !== 'website' && item.state === 'unknown')
+    || checklist.find((item) => item.key === 'description')
+    || { key: 'description', label: 'Descrição', state: 'improve', weight: 7 };
+
+  return [website, second].map((item) => {
+    const priority = priorities.find((entry) => entry.key === item.key);
+    return {
+      key: item.key,
+      label: item.key === 'website' ? 'Site profissional' : item.label,
+      action: priority?.action || IMPROVEMENT_ACTIONS[item.key] || 'Revisar e completar esta informação no perfil.',
+    };
+  });
+}
+
+function drawImprovement(ctx, item, index, x, y, width) {
+  fillRoundedRect(ctx, x, y, width, 90, 18, '#121925');
+  fillRoundedRect(ctx, x + 16, y + 17, 56, 56, 16, index === 0 ? '#173b38' : '#32283f');
+  ctx.fillStyle = index === 0 ? '#54dec5' : '#c6a8ff';
+  ctx.font = `900 20px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillText(`0${index + 1}`, x + 44, y + 52);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f4f6fa';
+  ctx.font = `800 20px ${FONT}`;
+  ctx.fillText(fitText(ctx, item.label, width - 112), x + 90, y + 35);
+  ctx.fillStyle = '#8d99ab';
+  ctx.font = `500 14px ${FONT}`;
+  wrapText(ctx, item.action, width - 112, 2).forEach((line, lineIndex) => {
+    ctx.fillText(line, x + 90, y + 59 + lineIndex * 17);
+  });
+}
+
 export function buildGoogleAnalysisImage(report) {
   const canvas = document.createElement('canvas');
   canvas.width = IMAGE_WIDTH;
@@ -129,6 +188,7 @@ export function buildGoogleAnalysisImage(report) {
   const company = report.company || {};
   const competition = report.competition || {};
   const competitors = (competition.competitors || []).slice(0, 5);
+  const improvementsForImage = selectImageImprovements(report);
   const position = formatMapPosition(competition.position);
   const improvements = Number(report.improvements_count || 0);
 
@@ -183,59 +243,65 @@ export function buildGoogleAnalysisImage(report) {
   drawMetric(ctx, { x: 790, y: 402, width: metricWidth, label: 'Avaliações', value: String(company.review_count ?? 0), accent: '#a88cff' });
 
   ctx.fillStyle = '#f4f6fa';
+  ctx.font = `900 26px ${FONT}`;
+  ctx.fillText('2 melhorias prioritárias', 64, 582);
+  drawImprovement(ctx, improvementsForImage[0], 0, 64, 606, 468);
+  drawImprovement(ctx, improvementsForImage[1], 1, 548, 606, 468);
+
+  ctx.fillStyle = '#f4f6fa';
   ctx.font = `900 30px ${FONT}`;
-  ctx.fillText('Posição e concorrentes', 64, 600);
+  ctx.fillText('Posição e concorrentes', 64, 752);
   ctx.fillStyle = '#8d99ab';
   ctx.font = `500 19px ${FONT}`;
-  ctx.fillText(fitText(ctx, `${competition.keyword || 'Busca local'} · ${competition.location || company.address || 'Localização consultada'}`, 952), 64, 632);
+  ctx.fillText(fitText(ctx, `${competition.keyword || 'Busca local'} · ${competition.location || company.address || 'Localização consultada'}`, 952), 64, 782);
 
-  fillRoundedRect(ctx, 64, 664, 952, 102, 22, '#14212a');
-  fillRoundedRect(ctx, 84, 686, 112, 58, 29, '#153e36');
+  fillRoundedRect(ctx, 64, 806, 952, 90, 22, '#14212a');
+  fillRoundedRect(ctx, 84, 822, 112, 58, 29, '#153e36');
   ctx.fillStyle = '#69e0b4';
   ctx.font = `900 22px ${FONT}`;
   ctx.textAlign = 'center';
-  ctx.fillText(formatMapPosition(competition.position, true), 140, 722);
+  ctx.fillText(formatMapPosition(competition.position, true), 140, 858);
   ctx.textAlign = 'left';
   ctx.fillStyle = '#f5f7fb';
   ctx.font = `800 24px ${FONT}`;
-  ctx.fillText(fitText(ctx, company.name, 530), 220, 703);
+  ctx.fillText(fitText(ctx, company.name, 530), 220, 841);
   ctx.fillStyle = '#94a1b3';
   ctx.font = `500 18px ${FONT}`;
-  ctx.fillText(fitText(ctx, company.address || 'Endereço não informado', 530), 220, 734);
+  ctx.fillText(fitText(ctx, company.address || 'Endereço não informado', 530), 220, 870);
   ctx.fillStyle = '#f4bf45';
   ctx.font = `800 20px ${FONT}`;
-  ctx.fillText(`★ ${ratingText(company.rating)}  ·  ${company.review_count ?? 0} avaliações`, 790, 720);
+  ctx.fillText(`★ ${ratingText(company.rating)}  ·  ${company.review_count ?? 0} avaliações`, 790, 856);
 
-  const rowHeight = 94;
+  const rowHeight = 67;
   competitors.forEach((item, index) => {
-    const y = 786 + index * rowHeight;
-    fillRoundedRect(ctx, 64, y, 952, 80, 18, index % 2 ? '#111823' : '#121b27');
-    fillRoundedRect(ctx, 84, y + 15, 96, 50, 25, '#202b39');
+    const y = 912 + index * rowHeight;
+    fillRoundedRect(ctx, 64, y, 952, 58, 16, index % 2 ? '#111823' : '#121b27');
+    fillRoundedRect(ctx, 84, y + 9, 96, 40, 20, '#202b39');
     ctx.fillStyle = '#8ad9c1';
-    ctx.font = `900 18px ${FONT}`;
+    ctx.font = `900 16px ${FONT}`;
     ctx.textAlign = 'center';
-    ctx.fillText(`POS. ${item.position ?? '—'}`, 132, y + 47);
+    ctx.fillText(`POS. ${item.position ?? '—'}`, 132, y + 35);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#f1f4f8';
-    ctx.font = `800 21px ${FONT}`;
-    ctx.fillText(fitText(ctx, item.name || 'Concorrente', 490), 204, y + 34);
-    ctx.fillStyle = '#8592a5';
-    ctx.font = `500 17px ${FONT}`;
-    const detail = [item.category, item.address].filter(Boolean).join(' · ') || 'Perfil concorrente na busca local';
-    ctx.fillText(fitText(ctx, detail, 490), 204, y + 60);
-    ctx.fillStyle = '#f4bf45';
     ctx.font = `800 18px ${FONT}`;
-    ctx.fillText(`★ ${ratingText(item.rating)}`, 764, y + 34);
+    ctx.fillText(fitText(ctx, item.name || 'Concorrente', 490), 204, y + 25);
+    ctx.fillStyle = '#8592a5';
+    ctx.font = `500 14px ${FONT}`;
+    const detail = [item.category, item.address].filter(Boolean).join(' · ') || 'Perfil concorrente na busca local';
+    ctx.fillText(fitText(ctx, detail, 490), 204, y + 46);
+    ctx.fillStyle = '#f4bf45';
+    ctx.font = `800 16px ${FONT}`;
+    ctx.fillText(`★ ${ratingText(item.rating)}`, 764, y + 25);
     ctx.fillStyle = '#9aa6b8';
-    ctx.font = `600 17px ${FONT}`;
-    ctx.fillText(`${item.review_count ?? 0} avaliações`, 764, y + 60);
+    ctx.font = `600 14px ${FONT}`;
+    ctx.fillText(`${item.review_count ?? 0} avaliações`, 764, y + 46);
   });
 
   if (!competitors.length) {
-    fillRoundedRect(ctx, 64, 786, 952, 112, 18, '#111823');
+    fillRoundedRect(ctx, 64, 912, 952, 90, 18, '#111823');
     ctx.fillStyle = '#94a1b3';
     ctx.font = `600 20px ${FONT}`;
-    ctx.fillText('Não foi possível listar concorrentes nesta consulta.', 92, 850);
+    ctx.fillText('Não foi possível listar concorrentes nesta consulta.', 92, 965);
   }
 
   ctx.textAlign = 'right';
