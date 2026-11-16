@@ -9,20 +9,21 @@ import unicodedata
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response
 
 from .config import get_settings
 from .api_key_repository import ApiKeyRepository
-from .google_analysis_models import AnalysisJob, GoogleAnalysisLinkRequest, GoogleAnalysisRequest, GoogleCompanySearchRequest
+from .google_analysis_models import AnalysisJob, GoogleAnalysisRequest, GoogleCompanySearchRequest
 from .google_analysis_provider import RotatingSerpApiProvider, ProviderError, ProviderNotConfigured, demo_payload, demo_search, normalize_live_evidence
-from .google_analysis_repository import GoogleAnalysisRepository
 from .google_analysis_scoring import methodology_payload, score_profile
 
 
 router = APIRouter(prefix="/api/google-analysis", tags=["Análise Google"])
 jobs: dict[str, AnalysisJob] = {}
 request_jobs: dict[str, str] = {}
+transient_reports: dict[str, dict[str, Any]] = {}
 job_lock = asyncio.Lock()
+TRANSIENT_REPORT_TTL_SECONDS = 15 * 60
 
 
 def is_unconfirmed(value: Any) -> bool:
@@ -91,10 +92,6 @@ def resolve_competitive_query(request: GoogleAnalysisRequest, info: dict[str, An
     else:
         keyword = requested_keyword
     return keyword or company_name, location, category, neighborhood
-
-
-def repository() -> GoogleAnalysisRepository:
-    return GoogleAnalysisRepository(get_settings())
 
 
 def serpapi_keys() -> ApiKeyRepository:
@@ -277,8 +274,9 @@ async def run_analysis(job_id: str, key: str, request: GoogleAnalysisRequest) ->
             "limitations": data["limitations"],
             **scored,
         }
-        await asyncio.to_thread(repository().save, report)
-        job.completed_steps.extend(["Nota e cobertura calculadas", "Relatório salvo no histórico"])
+        transient_reports[report_id] = report
+        asyncio.create_task(expire_transient_report(report_id, job_id))
+        job.completed_steps.extend(["Nota e cobertura calculadas", "Relatório preparado para download"])
         job.report_id = report_id
         job.status = report["status"]
         job.stage = "Relatório concluído" if report["status"] == "completed" else "Relatório parcial concluído"
@@ -292,25 +290,19 @@ async def run_analysis(job_id: str, key: str, request: GoogleAnalysisRequest) ->
                 request_jobs.pop(key, None)
 
 
-@router.get("/reports")
-def list_reports(limit: int = Query(default=30, ge=1, le=100)):
-    try:
-        return {"items": repository().list(limit)}
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Não foi possível carregar o histórico: {exc}") from exc
+async def expire_transient_report(report_id: str, job_id: str) -> None:
+    await asyncio.sleep(TRANSIENT_REPORT_TTL_SECONDS)
+    transient_reports.pop(report_id, None)
+    jobs.pop(job_id, None)
 
 
 @router.get("/reports/{report_id}")
-def get_report(report_id: str):
-    try:
-        return repository().get(report_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.post("/reports/{report_id}/link-lead")
-def link_report_to_lead(report_id: str, request: GoogleAnalysisLinkRequest):
-    try:
-        return repository().link_lead(report_id, request.place_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def consume_report(report_id: str, response: Response):
+    report = transient_reports.pop(report_id, None)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Análise temporária não encontrada ou já descartada.")
+    response.headers["Cache-Control"] = "no-store"
+    for job_id, job in list(jobs.items()):
+        if job.report_id == report_id:
+            jobs.pop(job_id, None)
+    return report

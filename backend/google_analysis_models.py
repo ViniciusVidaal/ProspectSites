@@ -26,10 +26,6 @@ class GoogleAnalysisRequest(BaseModel):
         return self
 
 
-class GoogleAnalysisLinkRequest(BaseModel):
-    place_id: str = Field(min_length=2, max_length=200)
-
-
 class AnalysisJob(BaseModel):
     id: str
     status: Literal["pending", "processing", "completed", "partial", "failed"]

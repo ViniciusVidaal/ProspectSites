@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, ArrowLeft, BarChart3, Building2, CheckCircle2, ChevronRight,
-  Clock3, Download, ExternalLink, FileSearch, History, Link2, LoaderCircle,
+  Clock3, Download, ExternalLink, FileSearch, FileText, Link2, LoaderCircle,
   MapPin, Play, RefreshCw, Search, ShieldCheck, Sparkles, Star, Target, XCircle, Coins
 } from "lucide-react";
 import { downloadGoogleAnalysisImage, formatMapPosition } from "./reportImage";
@@ -141,7 +141,7 @@ function ConfigureStep({ company, demo, onBack, onStart }) {
 }
 
 function ProgressStep({ job }) {
-  const stages = ["Abrindo o perfil público", "Comparando resultados locais", "Aplicando a metodologia ProspectSites", "Relatório salvo no histórico"];
+  const stages = ["Abrindo o perfil público", "Comparando resultados locais", "Aplicando a metodologia ProspectSites", "Relatório preparado para download"];
   return <section className="ga-card ga-progress-card">
     <div className="ga-progress-orbit"><LoaderCircle className="spin" size={35}/><FileSearch size={26}/></div>
     <span>Análise em andamento</span><h2>{job?.stage || "Preparando a análise"}</h2>
@@ -159,37 +159,37 @@ function ScoreGauge({ report }) {
   return <div className={`ga-score-gauge ${report.score_reliable ? "" : "insufficient"}`} style={{ "--score": `${report.score || 0}%` }}><div><strong>{shownScore}</strong><span>{report.score_reliable ? "/100" : "dados insuficientes"}</span></div></div>;
 }
 
-function ReportView({ apiBase, report, leads, onNew, onLinked, notify }) {
-  const api = useMemo(() => createApi(apiBase), [apiBase]);
-  const [leadId, setLeadId] = useState(report.lead_place_id || "");
-  const [downloading, setDownloading] = useState(false);
+function ReportView({ report, onNew, notify }) {
+  const [downloading, setDownloading] = useState("");
   const competition = report.competition || {};
   const positionText = formatMapPosition(competition.position);
-  const linkLead = async () => {
-    if (!leadId) return notify("Selecione um lead para vincular.");
+  const download = async (format) => {
+    setDownloading(format);
     try {
-      await api(`/api/google-analysis/reports/${report.id}/link-lead`, { method: "POST", body: JSON.stringify({ place_id: leadId }) });
-      onLinked({ ...report, lead_place_id: leadId });
-      notify("Análise vinculada ao lead.", true);
-    } catch (error) { notify(error.message); }
-  };
-  const downloadImage = async () => {
-    setDownloading(true);
-    try {
-      await downloadGoogleAnalysisImage(report);
-      notify("Imagem PNG criada. Ela não foi salva no banco.", true);
+      if (format === "pdf" || format === "both") {
+        const { downloadGoogleAnalysisPdf } = await import("./reportPdf");
+        downloadGoogleAnalysisPdf(report);
+      }
+      if (format === "png" || format === "both") await downloadGoogleAnalysisImage(report);
+      notify(format === "both" ? "PDF completo e imagem PNG criados." : format === "pdf" ? "PDF completo criado." : "Imagem PNG criada.", true);
     } catch (error) {
-      notify(error.message || "Não foi possível gerar a imagem.");
+      notify(error.message || "Não foi possível gerar o arquivo.");
     } finally {
-      setDownloading(false);
+      setDownloading("");
     }
   };
   return <div className="ga-report">
+    <div className="ga-ephemeral-banner"><ShieldCheck size={17}/><div><strong>Relatório temporário</strong><span>Os dados já foram removidos do servidor. Baixe os arquivos antes de sair desta tela.</span></div></div>
     {report.demo && <div className="ga-demo-banner"><Sparkles size={17}/><strong>Relatório de demonstração</strong><span>Todos os dados abaixo são fictícios.</span></div>}
     <section className="ga-report-hero ga-card">
       <div className="ga-report-company"><span>Diagnóstico de Perfil da Empresa no Google</span><h1>{report.company.name}</h1><p><MapPin size={14}/>{report.company.address || "Localização não informada"} · <Clock3 size={14}/>{new Date(report.collected_at).toLocaleString("pt-BR")}</p>{report.company.maps_url && <a href={report.company.maps_url} target="_blank" rel="noopener noreferrer">Abrir perfil <ExternalLink size={13}/></a>}</div>
       <ScoreGauge report={report}/>
-      <div className="ga-report-actions"><button className="ga-primary" onClick={downloadImage} disabled={downloading}>{downloading ? <LoaderCircle className="spin" size={16}/> : <Download size={16}/>} {downloading ? "Criando PNG..." : "Baixar imagem PNG"}</button><button onClick={onNew}><RefreshCw size={16}/>Nova análise</button></div>
+      <div className="ga-report-actions">
+        <button onClick={() => download("pdf")} disabled={Boolean(downloading)}>{downloading === "pdf" ? <LoaderCircle className="spin" size={16}/> : <FileText size={16}/>}Baixar PDF completo</button>
+        <button onClick={() => download("png")} disabled={Boolean(downloading)}>{downloading === "png" ? <LoaderCircle className="spin" size={16}/> : <Download size={16}/>}Baixar imagem PNG</button>
+        <button className="ga-primary" onClick={() => download("both")} disabled={Boolean(downloading)}>{downloading === "both" ? <LoaderCircle className="spin" size={16}/> : <Download size={16}/>}Baixar PDF + PNG</button>
+        <button onClick={onNew}><RefreshCw size={16}/>Nova análise</button>
+      </div>
     </section>
     <section className="ga-report-metrics">
       <article><Star size={18}/><div><small>Nota dos clientes</small><strong>{report.company.rating ?? "—"}</strong><span>{report.company.review_count ?? 0} avaliações</span></div></article>
@@ -203,21 +203,11 @@ function ReportView({ apiBase, report, leads, onNew, onLinked, notify }) {
     <section className="ga-card ga-checklist"><div className="ga-section-title"><span><ShieldCheck size={19}/></span><div><h2>Checklist completo</h2><p>Desconhecido e não aplicável não recebem zero.</p></div></div><div className="ga-check-grid">{report.checklist?.map((item) => <article className={item.state} key={item.key}><StatusIcon state={item.state}/><div><strong>{item.label}</strong><span>{item.state_label}</span><p>{item.evidence}</p></div><em>{item.points === null ? "—" : `${item.points}/${item.weight}`}</em></article>)}</div></section>
     <section className="ga-card ga-competition"><div className="ga-section-title"><span><BarChart3 size={19}/></span><div><h2>Comparação competitiva</h2><p>{competition.keyword} · {competition.location}</p></div></div><div className="ga-competition-summary"><span>Posição observada <b>{positionText}</b></span><span>Amostra <b>{competition.sample_size}</b></span><span>Mediana de avaliações <b>{competition.median_review_count ?? "—"}</b></span></div><div className="ga-competitor-list">{competition.competitors?.map((item) => <article key={item.place_id || item.name}><b>{item.position}º</b><div><strong>{item.name}</strong><span><Star size={12}/>{item.rating ?? "—"} · {item.review_count ?? 0} avaliações</span></div></article>)}</div></section>
     <section className="ga-card ga-limitations"><div className="ga-section-title"><span><AlertTriangle size={19}/></span><div><h2>Fontes e limitações</h2><p>Transparência faz parte da análise.</p></div></div><ul>{report.limitations?.map((item) => <li key={item}>{item}</li>)}</ul><p className="ga-method-note">A Nota ProspectSites é própria e não representa uma nota do Google. Os pesos não são fatores oficiais de ranqueamento.</p></section>
-    <section className="ga-card ga-link-lead"><div><Link2 size={18}/><div><strong>Vincular ao cadastro de um lead</strong><p>O vínculo não envia WhatsApp, e-mail ou qualquer mensagem.</p></div></div><select value={leadId} onChange={(event) => setLeadId(event.target.value)}><option value="">Selecione um lead</option>{leads.map((lead) => <option key={lead.place_id} value={lead.place_id}>{lead.company_name}</option>)}</select><button onClick={linkLead} disabled={!leadId}>Vincular</button></section>
   </div>;
-}
-
-function HistoryView({ api, onOpen, notify }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const load = async () => { setLoading(true); try { setItems((await api("/api/google-analysis/reports?limit=50")).items || []); } catch (error) { notify(error.message); } finally { setLoading(false); } };
-  useEffect(() => { load(); }, []);
-  return <section className="ga-card ga-history"><div className="ga-section-title"><span><History size={19}/></span><div><h2>Histórico de análises</h2><p>O PNG é criado somente no navegador e nunca é salvo no banco.</p></div></div>{loading ? <div className="ga-loading"><LoaderCircle className="spin" size={20}/>Carregando histórico...</div> : <div className="ga-history-list">{items.map((item) => <button key={item.id} onClick={() => onOpen(item.id)}><div><strong>{item.company?.name}</strong><span>{new Date(item.collected_at).toLocaleString("pt-BR")} · {item.demo ? "Demonstração" : item.provider}</span></div><b>{item.score_reliable ? `${item.score}/100` : "Parcial"}</b><ChevronRight size={16}/></button>)}{!items.length && <div className="ga-empty"><History size={27}/><strong>Nenhuma análise salva</strong><span>Conclua a primeira análise para alimentar o histórico.</span></div>}</div>}</section>;
 }
 
 export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
   const api = useMemo(() => createApi(apiBase), [apiBase]);
-  const [view, setView] = useState("new");
   const [step, setStep] = useState("search");
   const [capabilities, setCapabilities] = useState({ live_configured: false, demo_available: true });
   const [company, setCompany] = useState(null);
@@ -245,12 +235,11 @@ export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
       setReport(result); setStep("report");
     } catch (error) { notify(error.message); setStep("configure"); }
   };
-  const openReport = async (id) => { try { setReport(await api(`/api/google-analysis/reports/${id}`)); setView("new"); setStep("report"); } catch (error) { notify(error.message); } };
-  const reset = () => { setCompany(null); setJob(null); setReport(null); setStep("search"); setView("new"); };
+  const reset = () => { setCompany(null); setJob(null); setReport(null); setStep("search"); };
 
   return <div className="ga-page">
-    <header className="ga-hero"><div><span className="ga-kicker"><Sparkles size={14}/>Inteligência local ProspectSites</span><h1>Análise Google</h1><p>Diagnóstico transparente do perfil, reputação e concorrência local.</p></div><div className="ga-view-tabs"><button className={view === "new" ? "active" : ""} onClick={() => setView("new")}><FileSearch size={15}/>Nova análise</button><button className={view === "history" ? "active" : ""} onClick={() => setView("history")}><History size={15}/>Histórico</button></div></header>
-    {view === "history" ? <HistoryView api={api} onOpen={openReport} notify={notify}/> : step === "search" ? <SearchStep api={api} capabilities={capabilities} leads={leads} onSelect={selectCompany} notify={notify}/> : step === "configure" ? <ConfigureStep company={company} demo={!capabilities.live_configured} onBack={() => setStep("search")} onStart={start}/> : step === "progress" ? <ProgressStep job={job}/> : report ? <ReportView apiBase={apiBase} report={report} leads={leads} onNew={reset} onLinked={setReport} notify={notify}/> : null}
+    <header className="ga-hero"><div><span className="ga-kicker"><Sparkles size={14}/>Inteligência local ProspectSites</span><h1>Análise Google</h1><p>Diagnóstico transparente do perfil, reputação e concorrência local.</p></div><div className="ga-storage-note"><ShieldCheck size={16}/><span>Nenhuma análise é salva no banco</span></div></header>
+    {step === "search" ? <SearchStep api={api} capabilities={capabilities} leads={leads} onSelect={selectCompany} notify={notify}/> : step === "configure" ? <ConfigureStep company={company} demo={!capabilities.live_configured} onBack={() => setStep("search")} onStart={start}/> : step === "progress" ? <ProgressStep job={job}/> : report ? <ReportView report={report} onNew={reset} notify={notify}/> : null}
     {notice && <div className={`ga-notice ${notice.success ? "success" : ""}`}>{notice.success ? <CheckCircle2 size={17}/> : <AlertTriangle size={17}/>}<span>{notice.message}</span><button onClick={() => setNotice(null)}>×</button></div>}
   </div>;
 }

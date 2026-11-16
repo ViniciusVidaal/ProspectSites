@@ -1,6 +1,6 @@
 # Análise Google — ProspectSites
 
-Módulo isolado para buscar perfis públicos, aplicar metodologia própria e versionada, comparar concorrentes, salvar histórico e gerar uma imagem vertical para compartilhamento.
+Módulo isolado para buscar perfis públicos, aplicar metodologia própria e versionada, comparar concorrentes e gerar arquivos locais para compartilhamento.
 
 ## Estado funcional
 
@@ -13,11 +13,11 @@ Módulo isolado para buscar perfis públicos, aplicar metodologia própria e ver
 - Checklist com 16 itens e cinco estados possíveis.
 - SerpApi para detalhes, concorrência, avaliações recentes/respostas e postagens.
 - Concorrência limitada ao bairro extraído do endereço; resultados de outras regiões são descartados.
-- Histórico no Firestore em `google_profile_analyses`.
 - PNG vertical de 1080 × 1350 px, gerado somente no navegador para download e envio pelo WhatsApp.
+- PDF completo gerado somente no navegador, com resumo, melhorias, checklist, comparação competitiva, fontes e limitações.
 - O PNG mostra no máximo duas melhorias reais e nunca ultrapassa `improvements_count`; site profissional recebe prioridade somente quando estiver ausente ou precisar melhorar.
-- A imagem não é enviada ao backend nem armazenada no Firestore; o banco guarda apenas os dados estruturados da análise.
-- Vínculo manual com lead, sem envio automático de WhatsApp ou e-mail.
+- PNG e PDF não são enviados ao backend nem armazenados no Firestore.
+- O relatório estruturado permanece apenas na memória durante a execução, é consumido uma única vez pela tela e expira em até 15 minutos se não for aberto.
 - Modo de demonstração identificado quando a chave SerpApi não está configurada.
 
 ## Configuração
@@ -89,18 +89,18 @@ Abaixo de 60% de cobertura, a interface mostra “dados insuficientes para uma n
 
 Detalhes do perfil são necessários para criar o relatório real. Concorrência, avaliações e postagens são consultadas separadamente; se uma delas falhar, o relatório preserva os outros dados, marca os itens afetados como não verificáveis e registra a limitação.
 
-## Persistência, retenção e isolamento
+## Persistência e retenção
 
-O projeto atual não possui autenticação de usuário nem modelo de contas. Para não criar uma falsa promessa de isolamento, esta versão usa `tenant_key: default`, igual ao acesso global já existente. Antes de oferecer a aplicação a múltiplas contas, implemente autenticação/autorização e derive `tenant_key` exclusivamente no servidor.
+Novas análises não são persistidas no Firestore. O backend mantém o resultado somente em memória até a primeira entrega à tela; depois disso, a cópia fica apenas no estado atual do navegador para permitir os downloads. Atualizar ou fechar a página descarta o relatório, portanto os arquivos devem ser baixados antes de sair.
 
-Os termos de retenção e exportação da SerpApi ainda precisam de validação jurídica/contratual antes do uso comercial. Não trate o histórico como autorização para armazenamento indefinido.
+A coleção legada `google_profile_analyses`, se já contiver documentos anteriores, não é consultada nem recebe novos registros. A remoção desses documentos antigos deve ser feita separadamente e somente com autorização explícita.
 
 ## Limitações atuais
 
 - Integração real não foi executada sem uma chave SerpApi configurada.
 - O Maps Search da v1 usa a primeira página e oferece profundidade de 10 ou 20 resultados; páginas adicionais exigem coordenadas `ll`.
 - A situação de verificação, total de fotos e produtos/serviços permanecem desconhecidos sem evidência adequada.
-- Jobs e deduplicação em andamento vivem no processo. Reiniciar o backend perde o estado transitório; relatórios salvos permanecem no Firestore.
+- Jobs e relatórios em andamento vivem somente no processo. Reiniciar o backend perde o estado transitório.
 - Não existe autenticação no projeto atual; a aba herda o mesmo acesso do painel.
 - Nenhum deploy foi executado.
 

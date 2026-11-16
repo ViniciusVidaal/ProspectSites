@@ -3,8 +3,12 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock
 
+import pytest
+from fastapi import HTTPException, Response
+
+from backend import google_analysis_router as google_router
 from backend.google_analysis_provider import SerpApiProvider, demo_payload, normalize_live_evidence
-from backend.google_analysis_models import GoogleAnalysisRequest
+from backend.google_analysis_models import AnalysisJob, GoogleAnalysisRequest
 from backend.google_analysis_router import local_competitors, neighborhood_from_address, resolve_competitive_query
 from backend.google_analysis_scoring import RULES, score_profile
 from backend.models import Lead
@@ -118,3 +122,31 @@ def test_manual_company_search_uses_name_and_full_address():
     ))
     params = provider._get.await_args.args[0]
     assert params["q"] == "JP do Gás Vicente Pires St. Hab. Vicente Pires loja 3 - Vicente Pires, Brasília - DF, 72007-535"
+
+
+def test_completed_analysis_is_transient_and_consumed_once():
+    google_router.jobs.clear()
+    google_router.request_jobs.clear()
+    google_router.transient_reports.clear()
+    job_id = "transient-job"
+    google_router.jobs[job_id] = AnalysisJob(id=job_id, status="pending")
+    request = GoogleAnalysisRequest(
+        company={"name": "Empresa Temporária", "address": "Brasília, DF", "place_id": "demo-profile"},
+        keyword="empresa",
+        location="Brasília, DF",
+        demo=True,
+    )
+
+    asyncio.run(google_router.run_analysis(job_id, "request-key", request))
+    report_id = google_router.jobs[job_id].report_id
+    assert report_id in google_router.transient_reports
+
+    response = Response()
+    report = google_router.consume_report(report_id, response)
+    assert report["company"]["name"] == "Empresa Temporária"
+    assert report_id not in google_router.transient_reports
+    assert job_id not in google_router.jobs
+    assert response.headers["cache-control"] == "no-store"
+    with pytest.raises(HTTPException) as exc:
+        google_router.consume_report(report_id, Response())
+    assert exc.value.status_code == 404

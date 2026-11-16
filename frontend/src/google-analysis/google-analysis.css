@@ -4,6 +4,7 @@
 .ga-kicker { display:inline-flex; align-items:center; gap:6px; margin-bottom:12px; color:var(--accent-strong); font-size:9px; font-weight:900; letter-spacing:.12em; text-transform:uppercase; }
 .ga-hero h1 { margin:0; font:800 clamp(27px,4vw,45px)/1 Manrope; letter-spacing:-.04em; }
 .ga-hero p { margin:11px 0 0; color:var(--muted); font-size:12px; }
+.ga-storage-note { display:flex; align-items:center; gap:8px; padding:11px 14px; border:1px solid color-mix(in srgb,var(--accent) 32%,var(--line)); border-radius:11px; color:var(--accent-strong); background:var(--accent-soft); font-size:9px; font-weight:900; }
 .ga-view-tabs,.ga-source-tabs { display:flex; gap:5px; padding:5px; border:1px solid var(--line); border-radius:12px; background:var(--soft); }
 .ga-view-tabs button,.ga-source-tabs button { height:37px; display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:0 13px; border:0; border-radius:8px; color:var(--muted); background:transparent; font-size:10px; font-weight:800; }
 .ga-view-tabs button.active,.ga-source-tabs button.active { color:var(--text); background:var(--panel); box-shadow:0 4px 14px rgba(20,40,28,.08); }
@@ -35,7 +36,7 @@
 .ga-company-results small { display:flex; align-items:center; gap:4px; color:var(--muted); font-size:8px; }
 .ga-company-rating { display:grid; grid-template-columns:auto auto; align-items:center; gap:3px; color:var(--ga-gold); font-size:10px; }
 .ga-company-rating span { grid-column:1/-1; color:var(--muted); font-size:8px; }
-.ga-company-results article>button,.ga-report-actions button,.ga-link-lead button { min-height:36px; display:inline-flex; align-items:center; gap:5px; padding:0 12px; border:1px solid var(--line); border-radius:9px; color:var(--text); background:var(--panel); font-size:9px; font-weight:800; }
+.ga-company-results article>button,.ga-report-actions button { min-height:36px; display:inline-flex; align-items:center; gap:5px; padding:0 12px; border:1px solid var(--line); border-radius:9px; color:var(--text); background:var(--panel); font-size:9px; font-weight:800; }
 .ga-back { width:max-content; display:flex; align-items:center; gap:5px; border:0; color:var(--muted); background:transparent; font-size:9px; font-weight:800; }
 .ga-selected-company { display:flex; align-items:center; gap:12px; padding:15px; border:1px solid var(--line); border-radius:14px; background:var(--soft); }
 .ga-selected-company>div:nth-child(2) { flex:1; }
@@ -59,6 +60,10 @@
 .spin { animation:ga-spin 1s linear infinite; }
 @keyframes ga-spin { to { transform:rotate(360deg); } }
 .ga-report { display:grid; gap:16px; }
+.ga-ephemeral-banner { display:flex; align-items:center; gap:10px; padding:13px 15px; border:1px solid color-mix(in srgb,var(--accent) 34%,var(--line)); border-radius:12px; color:var(--accent-strong); background:var(--accent-soft); }
+.ga-ephemeral-banner>div { display:grid; gap:3px; }
+.ga-ephemeral-banner strong { font-size:10px; }
+.ga-ephemeral-banner span { color:var(--muted); font-size:9px; }
 .ga-demo-banner { align-items:center; }
 .ga-demo-banner span { font-size:9px; }
 .ga-report-hero { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:20px; padding:28px; background:radial-gradient(circle at 80% 20%,var(--accent-soft),transparent 32%),var(--panel); }
@@ -73,7 +78,7 @@
 .ga-score-gauge span { color:var(--muted); font-size:8px; font-weight:800; }
 .ga-score-gauge.insufficient strong { font-size:28px; }
 .ga-score-gauge.insufficient span { max-width:70px; text-align:center; }
-.ga-report-actions { grid-column:1/-1; display:flex; gap:8px; padding-top:18px; border-top:1px solid var(--line); }
+.ga-report-actions { grid-column:1/-1; display:flex; flex-wrap:wrap; gap:8px; padding-top:18px; border-top:1px solid var(--line); }
 .ga-report-actions button:disabled { cursor:wait; opacity:.72; }
 .ga-report-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
 .ga-report-metrics article { min-height:108px; display:flex; align-items:flex-start; gap:10px; padding:17px; border:1px solid var(--line); border-radius:15px; background:var(--panel); box-shadow:var(--shadow); }
@@ -109,16 +114,6 @@
 .ga-competitor-list span { display:flex; align-items:center; gap:4px; margin-top:3px; color:var(--muted); font-size:8px; }
 .ga-limitations ul { display:grid; gap:7px; margin:17px 0; padding-left:18px; color:var(--muted); font-size:9px; line-height:1.6; }
 .ga-method-note { margin:0; padding:12px; border-radius:10px; color:var(--accent-strong); background:var(--accent-soft); font-size:9px; font-weight:700; }
-.ga-link-lead { display:grid; grid-template-columns:minmax(0,1fr) minmax(210px,320px) auto; align-items:center; gap:12px; }
-.ga-link-lead>div { display:flex; align-items:center; gap:9px; }
-.ga-link-lead strong { font-size:10px; }
-.ga-link-lead p { margin:4px 0 0; color:var(--muted); font-size:8px; }
-.ga-link-lead select { height:39px; padding:0 10px; border:1px solid var(--input-line); border-radius:9px; color:var(--text); background:var(--panel); font-size:9px; }
-.ga-history-list { display:grid; gap:7px; margin-top:18px; }
-.ga-history-list>button { width:100%; display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:12px; padding:13px; border:1px solid var(--line); border-radius:11px; color:var(--text); background:var(--soft); text-align:left; }
-.ga-history-list strong { display:block; font-size:10px; }
-.ga-history-list span { display:block; margin-top:4px; color:var(--muted); font-size:8px; }
-.ga-history-list b { color:var(--accent-strong); font-size:11px; }
 .ga-loading,.ga-empty { min-height:180px; display:grid; place-items:center; align-content:center; gap:7px; color:var(--muted); font-size:9px; text-align:center; }
 .ga-empty strong { color:var(--text); font-size:11px; }
 .ga-notice { position:fixed; z-index:1600; top:18px; right:18px; max-width:430px; display:flex; align-items:center; gap:8px; padding:12px 13px; border:1px solid var(--danger); border-radius:11px; color:var(--text); background:var(--panel); box-shadow:0 15px 45px rgba(0,0,0,.2); font-size:9px; }
@@ -129,7 +124,7 @@
 @media (max-width:700px) {
   .ga-page { padding-top:16px; }
   .ga-hero { min-height:auto; align-items:stretch; flex-direction:column; padding:20px; text-align:center; }
-  .ga-kicker,.ga-view-tabs { justify-content:center; }
+  .ga-kicker,.ga-view-tabs,.ga-storage-note { justify-content:center; }
   .ga-view-tabs button { flex:1; }
   .ga-card { padding:17px; }
   .ga-section-title { align-items:center; justify-content:center; text-align:center; }
@@ -146,7 +141,4 @@
   .ga-report-company p,.ga-report-company a { justify-content:center; }
   .ga-report-actions { width:100%; flex-direction:column; }
   .ga-report-actions button { justify-content:center; }
-  .ga-link-lead { grid-template-columns:1fr; text-align:center; }
-  .ga-link-lead>div { align-items:center; justify-content:center; }
-  .ga-link-lead button { justify-content:center; }
 }
