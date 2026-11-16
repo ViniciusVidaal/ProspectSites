@@ -15,9 +15,11 @@ from .firestore_repository import FirestoreRepository
 from .places import PlacesQuotaExceeded, PlacesRequestFailed, search_eligible_profiles
 from .sheets import SheetsRepository
 from .crm_router import router as crm_router
+from .google_analysis_router import router as google_analysis_router
 
 app = FastAPI(title="Prospect Sites API", version="2.0.0")
 app.include_router(crm_router)
+app.include_router(google_analysis_router)
 jobs: dict[str, Job] = {}
 
 try:

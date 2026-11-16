@@ -26,6 +26,8 @@ class Settings(BaseModel):
     gmail_sender_email: str | None = None
     gmail_sender_name: str = "Prospect Sites"
     hermes_webhook_secret: str | None = None
+    serpapi_api_key: str | None = None
+    serpapi_timeout_seconds: float = 30.0
 
 
 @lru_cache
@@ -87,4 +89,6 @@ def get_settings() -> Settings:
         gmail_sender_email=os.getenv("GMAIL_SENDER_EMAIL"),
         gmail_sender_name=os.getenv("GMAIL_SENDER_NAME", "Prospect Sites"),
         hermes_webhook_secret=os.getenv("HERMES_WEBHOOK_SECRET"),
+        serpapi_api_key=os.getenv("SERPAPI_API_KEY"),
+        serpapi_timeout_seconds=float(os.getenv("SERPAPI_TIMEOUT_SECONDS", "30")),
     )

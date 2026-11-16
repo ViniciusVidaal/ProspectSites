@@ -6,6 +6,10 @@ services:
     healthCheckPath: /health
     autoDeployTrigger: commit
     envVars:
+      - key: SERPAPI_API_KEY
+        sync: false
+      - key: SERPAPI_TIMEOUT_SECONDS
+        value: "30"
       - key: GOOGLE_PLACES_API_KEY
         sync: false
       - key: GOOGLE_SPREADSHEET_ID

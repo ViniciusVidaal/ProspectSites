@@ -1,0 +1,230 @@
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle, ArrowLeft, BarChart3, Building2, CheckCircle2, ChevronRight,
+  Clock3, Download, ExternalLink, FileSearch, History, Link2, LoaderCircle,
+  MapPin, Play, RefreshCw, Search, ShieldCheck, Sparkles, Star, Target, XCircle, Coins
+} from "lucide-react";
+import "./google-analysis.css";
+
+
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function errorMessage(detail) {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map((item) => item?.msg || "Dados inválidos").join(" · ");
+  return detail?.message || "Não foi possível concluir.";
+}
+
+function createApi(apiBase) {
+  return async (path, options = {}) => {
+    const response = await fetch(`${apiBase}${path}`, {
+      ...options,
+      cache: options.method && options.method !== "GET" ? undefined : "no-store",
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(errorMessage(body.detail));
+    return body;
+  };
+}
+
+function StatusIcon({ state }) {
+  if (state === "good") return <CheckCircle2 size={16}/>;
+  if (state === "unknown" || state === "not_applicable") return <AlertTriangle size={16}/>;
+  return <XCircle size={16}/>;
+}
+
+function SearchStep({ api, capabilities, leads, onSelect, notify }) {
+  const [source, setSource] = useState("search");
+  const [name, setName] = useState("");
+  const [city, setCity] = useState("");
+  const [refine, setRefine] = useState("");
+  const [selectedLead, setSelectedLead] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (source === "lead") {
+      const lead = leads.find((item) => item.place_id === selectedLead);
+      if (!lead) return notify("Selecione um lead existente.");
+      onSelect({
+        name: lead.company_name,
+        category: "Categoria a confirmar",
+        address: [lead.city, lead.state].filter(Boolean).join(", ") || "Localização a confirmar",
+        rating: lead.rating,
+        review_count: lead.review_count,
+        place_id: lead.place_id,
+        maps_url: lead.maps_link,
+        lead_place_id: lead.place_id,
+        from_lead: true,
+      });
+      return;
+    }
+    setLoading(true);
+    try {
+      const demo = !capabilities.live_configured;
+      const payload = await api(`/api/google-analysis/companies/search?demo=${demo}`, {
+        method: "POST",
+        body: JSON.stringify({ name, city, refine }),
+      });
+      setResults(payload.items || []);
+      if (!(payload.items || []).length) notify("Nenhuma empresa encontrada. Refine por bairro ou rua.");
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return <div className="ga-search-layout">
+    <section className="ga-card ga-search-card">
+      <div className="ga-section-title"><span><Search size={19}/></span><div><h2>Encontre o perfil da empresa</h2><p>Busque pelo nome ou reaproveite um lead já salvo.</p></div></div>
+      <div className="ga-source-tabs">
+        <button className={source === "search" ? "active" : ""} onClick={() => setSource("search")}><Search size={15}/>Nome e cidade</button>
+        <button className={source === "lead" ? "active" : ""} onClick={() => setSource("lead")}><Link2 size={15}/>Lead existente</button>
+      </div>
+      <form onSubmit={submit}>
+        {source === "search" ? <>
+          <label><span>Nome da empresa no Google Maps</span><div className="ga-input"><Building2 size={17}/><input required minLength="2" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex: ProspectSites"/></div></label>
+          <div className="ga-form-row">
+            <label><span>Cidade (opcional)</span><div className="ga-input"><MapPin size={17}/><input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Ex: Brasília, DF"/></div></label>
+            <label><span>Bairro ou rua para refinar</span><div className="ga-input"><Target size={17}/><input value={refine} onChange={(event) => setRefine(event.target.value)} placeholder="Ex: Asa Norte"/></div></label>
+          </div>
+        </> : <label><span>Lead salvo</span><div className="ga-input"><Building2 size={17}/><select required value={selectedLead} onChange={(event) => setSelectedLead(event.target.value)}><option value="">Selecione uma empresa</option>{leads.map((lead) => <option key={lead.place_id} value={lead.place_id}>{lead.company_name} · {lead.review_count || 0} avaliações</option>)}</select></div></label>}
+        <button className="ga-primary" disabled={loading}>{loading ? <LoaderCircle className="spin" size={17}/> : <Search size={17}/>} {loading ? "Buscando..." : source === "lead" ? "Usar este lead" : "Buscar minha empresa"}</button>
+      </form>
+      {!capabilities.live_configured && <div className="ga-demo-note"><Sparkles size={17}/><div><strong>Modo demonstração ativo</strong><p>A chave da SerpApi não está configurada. A jornada funciona com dados fictícios claramente identificados.</p></div></div>}
+    </section>
+    {!!results.length && <section className="ga-card ga-results-card">
+      <div className="ga-section-title"><span><Building2 size={19}/></span><div><h2>Empresas encontradas</h2><p>Confirme a empresa correta antes de consumir uma análise.</p></div></div>
+      <div className="ga-company-results">{results.map((item, index) => <article key={item.place_id || `${item.name}-${index}`}>
+        <div className="ga-company-avatar">{item.name.slice(0, 2).toUpperCase()}</div>
+        <div><strong>{item.name}</strong><p>{item.category}</p><small><MapPin size={12}/>{item.address}</small></div>
+        <div className="ga-company-rating"><Star size={14}/><b>{item.rating ?? "—"}</b><span>{item.review_count ?? 0} avaliações</span></div>
+        <button onClick={() => onSelect(item)}>É esta <ChevronRight size={15}/></button>
+      </article>)}</div>
+    </section>}
+  </div>;
+}
+
+function ConfigureStep({ company, demo, onBack, onStart }) {
+  const suggestedLocation = company.address && company.address !== "Endereço não informado" ? company.address : "Brasil";
+  const [keyword, setKeyword] = useState(`${company.category && company.category !== "Categoria a confirmar" ? company.category : company.name} em ${suggestedLocation}`);
+  const [location, setLocation] = useState(suggestedLocation);
+  const [depth, setDepth] = useState(20);
+  return <section className="ga-card ga-config-card">
+    <button className="ga-back" onClick={onBack}><ArrowLeft size={15}/>Trocar empresa</button>
+    <div className="ga-selected-company"><div className="ga-company-avatar large">{company.name.slice(0, 2).toUpperCase()}</div><div><span>Empresa selecionada</span><h2>{company.name}</h2><p>{company.category} · {company.address}</p></div>{demo && <em>Demonstração</em>}</div>
+    <div className="ga-section-title"><span><Target size={19}/></span><div><h2>Confirme a consulta competitiva</h2><p>A posição só vale para esta palavra-chave, localização e momento.</p></div></div>
+    <div className="ga-form-row">
+      <label><span>Palavra-chave</span><div className="ga-input"><Search size={17}/><input value={keyword} onChange={(event) => setKeyword(event.target.value)} /></div></label>
+      <label><span>Localização</span><div className="ga-input"><MapPin size={17}/><input value={location} onChange={(event) => setLocation(event.target.value)} /></div></label>
+    </div>
+    <label className="ga-depth"><span>Profundidade da busca</span><select value={depth} onChange={(event) => setDepth(Number(event.target.value))}><option value="10">10 resultados</option><option value="20">20 resultados</option></select><small>A primeira versão consulta uma página do Google Maps.</small></label>
+    <button className="ga-primary" onClick={() => onStart({ keyword, location, depth })}><Play size={17}/>Iniciar análise</button>
+  </section>;
+}
+
+function ProgressStep({ job }) {
+  const stages = ["Abrindo o perfil público", "Comparando resultados locais", "Aplicando a metodologia ProspectSites", "Relatório salvo no histórico"];
+  return <section className="ga-card ga-progress-card">
+    <div className="ga-progress-orbit"><LoaderCircle className="spin" size={35}/><FileSearch size={26}/></div>
+    <span>Análise em andamento</span><h2>{job?.stage || "Preparando a análise"}</h2>
+    <p>As etapas abaixo refletem operações reais. Não exibimos uma porcentagem fictícia.</p>
+    <div className="ga-stage-list">{stages.map((stage) => {
+      const done = job?.completed_steps?.some((item) => item.toLowerCase().includes(stage.split(" ")[0].toLowerCase())) || job?.completed_steps?.includes(stage);
+      const active = job?.stage === stage;
+      return <div className={`${done ? "done" : ""} ${active ? "active" : ""}`} key={stage}>{done ? <CheckCircle2 size={17}/> : active ? <LoaderCircle className="spin" size={17}/> : <Clock3 size={17}/>}<span>{stage}</span></div>;
+    })}</div>
+  </section>;
+}
+
+function ScoreGauge({ report }) {
+  const shownScore = report.score_reliable ? report.score : "—";
+  return <div className={`ga-score-gauge ${report.score_reliable ? "" : "insufficient"}`} style={{ "--score": `${report.score || 0}%` }}><div><strong>{shownScore}</strong><span>{report.score_reliable ? "/100" : "dados insuficientes"}</span></div></div>;
+}
+
+function ReportView({ apiBase, report, leads, onNew, onLinked, notify }) {
+  const api = useMemo(() => createApi(apiBase), [apiBase]);
+  const [leadId, setLeadId] = useState(report.lead_place_id || "");
+  const competition = report.competition || {};
+  const positionText = competition.position ? `${competition.position}º` : `Fora dos ${competition.depth || 0}`;
+  const linkLead = async () => {
+    if (!leadId) return notify("Selecione um lead para vincular.");
+    try {
+      await api(`/api/google-analysis/reports/${report.id}/link-lead`, { method: "POST", body: JSON.stringify({ place_id: leadId }) });
+      onLinked({ ...report, lead_place_id: leadId });
+      notify("Análise vinculada ao lead.", true);
+    } catch (error) { notify(error.message); }
+  };
+  return <div className="ga-report">
+    {report.demo && <div className="ga-demo-banner"><Sparkles size={17}/><strong>Relatório de demonstração</strong><span>Todos os dados abaixo são fictícios.</span></div>}
+    <section className="ga-report-hero ga-card">
+      <div className="ga-report-company"><span>Diagnóstico de Perfil da Empresa no Google</span><h1>{report.company.name}</h1><p><MapPin size={14}/>{report.company.address || "Localização não informada"} · <Clock3 size={14}/>{new Date(report.collected_at).toLocaleString("pt-BR")}</p>{report.company.maps_url && <a href={report.company.maps_url} target="_blank" rel="noopener noreferrer">Abrir perfil <ExternalLink size={13}/></a>}</div>
+      <ScoreGauge report={report}/>
+      <div className="ga-report-actions"><a className="ga-primary" href={`${apiBase}/api/google-analysis/reports/${report.id}/pdf`}><Download size={16}/>Baixar PDF</a><button onClick={onNew}><RefreshCw size={16}/>Nova análise</button></div>
+    </section>
+    <section className="ga-report-metrics">
+      <article><Star size={18}/><div><small>Nota dos clientes</small><strong>{report.company.rating ?? "—"}</strong><span>{report.company.review_count ?? 0} avaliações</span></div></article>
+      <article><Target size={18}/><div><small>Posição observada</small><strong>{positionText}</strong><span>{competition.keyword}</span></div></article>
+      <article><ShieldCheck size={18}/><div><small>Cobertura</small><strong>{Math.round(report.coverage)}%</strong><span>dos pesos avaliáveis</span></div></article>
+      <article><Sparkles size={18}/><div><small>Melhorias confirmadas</small><strong>{report.improvements_count}</strong><span>entre 16 itens</span></div></article>
+      <article><Coins size={18}/><div><small>Consumo estimado</small><strong>{report.cost?.searches_used ?? 0}</strong><span>buscas · ~US$ {(report.cost?.estimated_usd ?? 0).toFixed(3)}</span></div></article>
+    </section>
+    <section className="ga-card ga-summary"><div className="ga-section-title"><span><BarChart3 size={19}/></span><div><h2>Resumo executivo</h2><p>Metodologia ProspectSites {report.methodology_version}</p></div></div><p>{report.summary}</p>{!report.score_reliable && <div className="ga-warning"><AlertTriangle size={17}/>Cobertura abaixo de {report.minimum_coverage}%. A nota não deve ser tratada como confiável.</div>}</section>
+    <section className="ga-priorities"><div className="ga-section-title"><span><Target size={19}/></span><div><h2>Ações prioritárias</h2><p>Ordenadas por evidência, impacto e possibilidade de ação.</p></div></div><div className="ga-priority-grid">{report.priorities?.map((priority, index) => <article key={priority.key}><span>0{index + 1}</span><h3>{priority.title}</h3><p>{priority.reason}</p><strong>Ação recomendada</strong><small>{priority.action}</small></article>)}</div></section>
+    <section className="ga-card ga-checklist"><div className="ga-section-title"><span><ShieldCheck size={19}/></span><div><h2>Checklist completo</h2><p>Desconhecido e não aplicável não recebem zero.</p></div></div><div className="ga-check-grid">{report.checklist?.map((item) => <article className={item.state} key={item.key}><StatusIcon state={item.state}/><div><strong>{item.label}</strong><span>{item.state_label}</span><p>{item.evidence}</p></div><em>{item.points === null ? "—" : `${item.points}/${item.weight}`}</em></article>)}</div></section>
+    <section className="ga-card ga-competition"><div className="ga-section-title"><span><BarChart3 size={19}/></span><div><h2>Comparação competitiva</h2><p>{competition.keyword} · {competition.location}</p></div></div><div className="ga-competition-summary"><span>Posição observada <b>{positionText}</b></span><span>Amostra <b>{competition.sample_size}</b></span><span>Mediana de avaliações <b>{competition.median_review_count ?? "—"}</b></span></div><div className="ga-competitor-list">{competition.competitors?.map((item) => <article key={item.place_id || item.name}><b>{item.position}º</b><div><strong>{item.name}</strong><span><Star size={12}/>{item.rating ?? "—"} · {item.review_count ?? 0} avaliações</span></div></article>)}</div></section>
+    <section className="ga-card ga-limitations"><div className="ga-section-title"><span><AlertTriangle size={19}/></span><div><h2>Fontes e limitações</h2><p>Transparência faz parte da análise.</p></div></div><ul>{report.limitations?.map((item) => <li key={item}>{item}</li>)}</ul><p className="ga-method-note">A Nota ProspectSites é própria e não representa uma nota do Google. Os pesos não são fatores oficiais de ranqueamento.</p></section>
+    <section className="ga-card ga-link-lead"><div><Link2 size={18}/><div><strong>Vincular ao cadastro de um lead</strong><p>O vínculo não envia WhatsApp, e-mail ou qualquer mensagem.</p></div></div><select value={leadId} onChange={(event) => setLeadId(event.target.value)}><option value="">Selecione um lead</option>{leads.map((lead) => <option key={lead.place_id} value={lead.place_id}>{lead.company_name}</option>)}</select><button onClick={linkLead} disabled={!leadId}>Vincular</button></section>
+  </div>;
+}
+
+function HistoryView({ api, onOpen, notify }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const load = async () => { setLoading(true); try { setItems((await api("/api/google-analysis/reports?limit=50")).items || []); } catch (error) { notify(error.message); } finally { setLoading(false); } };
+  useEffect(() => { load(); }, []);
+  return <section className="ga-card ga-history"><div className="ga-section-title"><span><History size={19}/></span><div><h2>Histórico de análises</h2><p>PDFs são regenerados dos dados salvos, sem nova consulta paga.</p></div></div>{loading ? <div className="ga-loading"><LoaderCircle className="spin" size={20}/>Carregando histórico...</div> : <div className="ga-history-list">{items.map((item) => <button key={item.id} onClick={() => onOpen(item.id)}><div><strong>{item.company?.name}</strong><span>{new Date(item.collected_at).toLocaleString("pt-BR")} · {item.demo ? "Demonstração" : item.provider}</span></div><b>{item.score_reliable ? `${item.score}/100` : "Parcial"}</b><ChevronRight size={16}/></button>)}{!items.length && <div className="ga-empty"><History size={27}/><strong>Nenhuma análise salva</strong><span>Conclua a primeira análise para alimentar o histórico.</span></div>}</div>}</section>;
+}
+
+export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
+  const api = useMemo(() => createApi(apiBase), [apiBase]);
+  const [view, setView] = useState("new");
+  const [step, setStep] = useState("search");
+  const [capabilities, setCapabilities] = useState({ live_configured: false, demo_available: true });
+  const [company, setCompany] = useState(null);
+  const [job, setJob] = useState(null);
+  const [report, setReport] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const notify = (message, success = false) => { setNotice({ message, success }); window.setTimeout(() => setNotice(null), 5000); };
+
+  useEffect(() => { api("/api/google-analysis/capabilities").then(setCapabilities).catch((error) => notify(error.message)); }, [api]);
+
+  const selectCompany = (item) => { setCompany(item); setStep("configure"); };
+  const start = async (config) => {
+    try {
+      const nextJob = await api("/api/google-analysis/jobs", { method: "POST", body: JSON.stringify({ company, ...config, lead_place_id: company.lead_place_id || null, demo: !capabilities.live_configured }) });
+      setJob(nextJob); setStep("progress");
+      let current = nextJob;
+      for (let attempt = 0; attempt < 90 && ["pending", "processing"].includes(current.status); attempt += 1) {
+        await wait(900);
+        current = await api(`/api/google-analysis/jobs/${current.id}`);
+        setJob(current);
+      }
+      if (current.status === "failed") throw new Error(current.error || "A análise falhou.");
+      if (!current.report_id) throw new Error("A análise não terminou dentro do tempo esperado.");
+      const result = await api(`/api/google-analysis/reports/${current.report_id}`);
+      setReport(result); setStep("report");
+    } catch (error) { notify(error.message); setStep("configure"); }
+  };
+  const openReport = async (id) => { try { setReport(await api(`/api/google-analysis/reports/${id}`)); setView("new"); setStep("report"); } catch (error) { notify(error.message); } };
+  const reset = () => { setCompany(null); setJob(null); setReport(null); setStep("search"); setView("new"); };
+
+  return <div className="ga-page">
+    <header className="ga-hero"><div><span className="ga-kicker"><Sparkles size={14}/>Inteligência local ProspectSites</span><h1>Análise Google</h1><p>Diagnóstico transparente do perfil, reputação e concorrência local.</p></div><div className="ga-view-tabs"><button className={view === "new" ? "active" : ""} onClick={() => setView("new")}><FileSearch size={15}/>Nova análise</button><button className={view === "history" ? "active" : ""} onClick={() => setView("history")}><History size={15}/>Histórico</button></div></header>
+    {view === "history" ? <HistoryView api={api} onOpen={openReport} notify={notify}/> : step === "search" ? <SearchStep api={api} capabilities={capabilities} leads={leads} onSelect={selectCompany} notify={notify}/> : step === "configure" ? <ConfigureStep company={company} demo={!capabilities.live_configured} onBack={() => setStep("search")} onStart={start}/> : step === "progress" ? <ProgressStep job={job}/> : report ? <ReportView apiBase={apiBase} report={report} leads={leads} onNew={reset} onLinked={setReport} notify={notify}/> : null}
+    {notice && <div className={`ga-notice ${notice.success ? "success" : ""}`}>{notice.success ? <CheckCircle2 size={17}/> : <AlertTriangle size={17}/>}<span>{notice.message}</span><button onClick={() => setNotice(null)}>×</button></div>}
+  </div>;
+}
