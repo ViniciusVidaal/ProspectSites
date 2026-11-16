@@ -467,10 +467,26 @@ class FirestoreRepository:
             return int(result[0][0].value) if result else 0
 
         today = datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+        qualified = count(
+            self.collection
+            .where("archived", "==", False)
+            .where("sent", "==", False)
+        )
+        sent_waiting_for_archive = count(
+            self.collection
+            .where("archived", "==", False)
+            .where("sent", "==", True)
+        )
+        legacy_archived = count(self.collection.where("archived", "==", True))
+        archived = count(self.blocklist) + sent_waiting_for_archive + legacy_archived
         return {
             "total": count(self.collection) + count(self.blocklist),
-            "active": count(self.collection.where("archived", "==", False)),
+            # Dashboard categories are intentionally exclusive: once contacted,
+            # a lead stops being qualified/actionable immediately, even before
+            # the next queue refresh moves its compact profile to the blocklist.
+            "qualified": qualified,
+            "active": qualified,
             "sent": count(self.collection.where("sent", "==", True)),
             "sent_today": count(self.collection.where("sent_on", "==", today)),
-            "archived": count(self.blocklist),
+            "archived": archived,
         }

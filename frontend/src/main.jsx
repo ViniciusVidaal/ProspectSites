@@ -497,6 +497,9 @@ function App() {
     ));
     setStats((current) => ({
       ...current,
+      qualified: Math.max(0, Number(current.qualified ?? current.active ?? 0) - 1),
+      active: Math.max(0, Number(current.active || 0) - 1),
+      archived: Number(current.archived || 0) + 1,
       sent: Number(current.sent || 0) + 1,
       sent_today: Number(current.sent_today || 0) + 1,
     }));
@@ -519,6 +522,9 @@ function App() {
       ));
       setStats((current) => ({
         ...current,
+        qualified: Number(current.qualified ?? current.active ?? 0) + 1,
+        active: Number(current.active || 0) + 1,
+        archived: Math.max(0, Number(current.archived || 0) - 1),
         sent: Math.max(0, Number(current.sent || 0) - 1),
         sent_today: Math.max(0, Number(current.sent_today || 0) - 1),
       }));
@@ -559,6 +565,9 @@ function App() {
     const wasSentToday = lead.sent && String(lead.sent_at || "").startsWith(today);
     setStats((current) => ({
       ...current,
+      qualified: Math.max(0, Number(current.qualified ?? current.active ?? 0) + (sent ? -1 : 1)),
+      active: Math.max(0, Number(current.active || 0) + (sent ? -1 : 1)),
+      archived: Math.max(0, Number(current.archived || 0) + (sent ? 1 : -1)),
       sent: Math.max(0, Number(current.sent || 0) + (sent ? 1 : -1)),
       sent_today: Math.max(0, Number(current.sent_today || 0) + (sent ? 1 : wasSentToday ? -1 : 0)),
     }));
@@ -575,6 +584,9 @@ function App() {
       setLeads((items) => items.map((item) => item.place_id === lead.place_id ? original : item));
       setStats((current) => ({
         ...current,
+        qualified: Math.max(0, Number(current.qualified ?? current.active ?? 0) + (sent ? 1 : -1)),
+        active: Math.max(0, Number(current.active || 0) + (sent ? 1 : -1)),
+        archived: Math.max(0, Number(current.archived || 0) + (sent ? -1 : 1)),
         sent: Math.max(0, Number(current.sent || 0) + (sent ? -1 : 1)),
         sent_today: Math.max(0, Number(current.sent_today || 0) + (sent ? -1 : wasSentToday ? 1 : 0)),
       }));
@@ -800,7 +812,7 @@ function App() {
 
       {activeView === "prospecting" && <>
       <section className="metrics-row">
-        <article><span><Users size={18}/></span><div><strong>{dataUnavailable ? "—" : (stats.active ?? leads.filter((lead) => !lead.archived).length)}</strong><small>Leads qualificados</small></div></article>
+        <article><span><Users size={18}/></span><div><strong>{dataUnavailable ? "—" : (stats.qualified ?? stats.active ?? leads.filter((lead) => !lead.archived && !lead.sent).length)}</strong><small>Leads qualificados</small></div></article>
         <article><span><MessageCircle size={18}/></span><div><strong>{dataUnavailable ? "—" : (stats.sent || 0)}</strong><small>Mensagens enviadas</small></div></article>
         <article><span><CalendarDays size={18}/></span><div><strong>{dataUnavailable ? "—" : (stats.sent_today || 0)}</strong><small>Mensagens enviadas hoje</small></div></article>
         <article><span><ArchiveRestore size={18}/></span><div><strong>{dataUnavailable ? "—" : (stats.archived || 0)}</strong><small>Leads arquivados</small></div></article>
