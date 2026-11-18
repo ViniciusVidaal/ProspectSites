@@ -27,6 +27,7 @@ function createApi(apiBase) {
   return async (path, options = {}) => {
     const response = await fetch(`${apiBase}${path}`, {
       ...options,
+      signal: options.signal || AbortSignal.timeout(30000),
       cache: options.method && options.method !== "GET" ? undefined : "no-store",
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     });
@@ -47,6 +48,7 @@ function SearchStep({ api, capabilities, leads, archivedLoaded, archivedLoading,
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [selectedLead, setSelectedLead] = useState("");
+  const [leadQuery, setLeadQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -69,6 +71,7 @@ function SearchStep({ api, capabilities, leads, archivedLoaded, archivedLoading,
         review_count: lead.review_count,
         place_id: lead.place_id,
         maps_url: lead.maps_link,
+        phone: lead.phone || "",
         lead_place_id: lead.place_id,
         from_lead: true,
       });
@@ -102,13 +105,15 @@ function SearchStep({ api, capabilities, leads, archivedLoaded, archivedLoading,
           <label><span>Nome da empresa no Google Maps</span><div className="ga-input"><Building2 size={17}/><input required minLength="2" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex: JP do Gás Vicente Pires"/></div></label>
           <label><span>Endereço completo do perfil</span><div className="ga-input"><MapPin size={17}/><input required value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Cole o endereço completo exibido no Google"/></div></label>
         </> : <>
-          <label><span>Lead salvo ou perfil arquivado</span><div className="ga-input"><Building2 size={17}/><select required value={selectedLead} onChange={(event) => setSelectedLead(event.target.value)}><option value="">Selecione uma empresa</option>{leads.map((lead) => <option key={lead.place_id} value={lead.place_id}>{lead.company_name}{lead.archived ? " · arquivado" : ` · ${lead.review_count || 0} avaliações`}</option>)}</select></div></label>
+          <label><span>Buscar nos leads carregados</span><div className="ga-input"><Search size={17}/><input value={leadQuery} onChange={(event) => setLeadQuery(event.target.value)} placeholder="Nome ou telefone"/></div></label>
+          <label><span>Lead salvo ou perfil arquivado</span><div className="ga-input"><Building2 size={17}/><select required value={selectedLead} onChange={(event) => setSelectedLead(event.target.value)}><option value="">Selecione uma empresa</option>{leads.filter((lead) => { const query = leadQuery.trim().toLocaleLowerCase("pt-BR"); const digits = query.replace(/\D/g, ""); return !query || String(lead.company_name || "").toLocaleLowerCase("pt-BR").includes(query) || (digits.length > 0 && String(lead.phone || "").replace(/\D/g, "").includes(digits)); }).map((lead) => <option key={lead.place_id} value={lead.place_id}>{lead.company_name} · {lead.phone || "telefone não disponível"}{lead.archived ? " · arquivado" : ""}</option>)}</select></div></label>
+          {selectedLead && leads.find((lead) => lead.place_id === selectedLead) && <div className="ga-archived-status" role="status">Telefone: {leads.find((lead) => lead.place_id === selectedLead)?.phone || "não disponível — confirme antes de continuar"}</div>}
           {archivedLoading && <div className="ga-archived-status"><LoaderCircle className="spin" size={14}/>Carregando perfis arquivados...</div>}
           {!archivedLoading && archivedNextCursor && <button type="button" className="ga-load-archived" onClick={onLoadArchived}>Carregar mais perfis arquivados</button>}
         </>}
         <button className="ga-primary" disabled={loading}>{loading ? <LoaderCircle className="spin" size={17}/> : <Search size={17}/>} {loading ? "Buscando..." : source === "lead" ? "Usar este lead" : "Buscar minha empresa"}</button>
       </form>
-      {!capabilities.live_configured && <div className="ga-demo-note"><Sparkles size={17}/><div><strong>Modo demonstração ativo</strong><p>A chave da SerpApi não está configurada. A jornada funciona com dados fictícios claramente identificados.</p></div></div>}
+      {capabilities && !capabilities.live_configured && <div className="ga-demo-note"><Sparkles size={17}/><div><strong>Modo demonstração ativo</strong><p>A chave da SerpApi não está configurada. A jornada funciona com dados fictícios claramente identificados.</p></div></div>}
     </section>
     {!!results.length && <section className="ga-card ga-results-card">
       <div className="ga-section-title"><span><Building2 size={19}/></span><div><h2>Empresas encontradas</h2><p>Confirme a empresa correta antes de consumir uma análise.</p></div></div>
@@ -182,7 +187,7 @@ function ReportView({ report, onNew, notify }) {
       setDownloading("");
     }
   };
-  return <div className="ga-report">
+  return <div className="ga-report" data-lead-place-id={report.lead_place_id || ""} data-demo={report.demo ? "true" : "false"}>
     <div className="ga-ephemeral-banner"><ShieldCheck size={17}/><div><strong>Relatório temporário</strong><span>Os dados já foram removidos do servidor. Baixe os arquivos antes de sair desta tela.</span></div></div>
     {report.demo && <div className="ga-demo-banner"><Sparkles size={17}/><strong>Relatório de demonstração</strong><span>Todos os dados abaixo são fictícios.</span></div>}
     <section className="ga-report-hero ga-card">
@@ -213,7 +218,8 @@ function ReportView({ report, onNew, notify }) {
 export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
   const api = useMemo(() => createApi(apiBase), [apiBase]);
   const [step, setStep] = useState("search");
-  const [capabilities, setCapabilities] = useState({ live_configured: false, demo_available: true });
+  const [capabilities, setCapabilities] = useState(null);
+  const [capabilitiesError, setCapabilitiesError] = useState("");
   const [company, setCompany] = useState(null);
   const [job, setJob] = useState(null);
   const [report, setReport] = useState(null);
@@ -224,7 +230,7 @@ export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
   const [notice, setNotice] = useState(null);
   const notify = (message, success = false) => { setNotice({ message, success }); window.setTimeout(() => setNotice(null), 5000); };
 
-  useEffect(() => { api("/api/google-analysis/capabilities").then(setCapabilities).catch((error) => notify(error.message)); }, [api]);
+  useEffect(() => { api("/api/google-analysis/capabilities").then(setCapabilities).catch((error) => { setCapabilitiesError(error.message); notify(error.message); }); }, [api]);
 
   const availableLeads = useMemo(() => {
     const byId = new Map(archivedLeads.map((lead) => [lead.place_id, lead]));
@@ -259,10 +265,18 @@ export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
       const nextJob = await api("/api/google-analysis/jobs", { method: "POST", body: JSON.stringify({ company, ...config, lead_place_id: company.lead_place_id || null, demo: !capabilities.live_configured }) });
       setJob(nextJob); setStep("progress");
       let current = nextJob;
-      for (let attempt = 0; attempt < 90 && ["pending", "processing"].includes(current.status); attempt += 1) {
-        await wait(900);
-        current = await api(`/api/google-analysis/jobs/${current.id}`);
-        setJob(current);
+      const deadline = Date.now() + 180000;
+      let consecutiveErrors = 0;
+      while (Date.now() < deadline && ["pending", "processing"].includes(current.status)) {
+        await wait(1500);
+        try {
+          current = await api(`/api/google-analysis/jobs/${current.id}`);
+          consecutiveErrors = 0;
+          setJob(current);
+        } catch (error) {
+          consecutiveErrors += 1;
+          if (consecutiveErrors >= 3) throw new Error("Não foi possível acompanhar a análise. Confirme o estado antes de iniciar outra para evitar consumo duplicado.");
+        }
       }
       if (current.status === "failed") throw new Error(current.error || "A análise falhou.");
       if (!current.report_id) throw new Error("A análise não terminou dentro do tempo esperado.");
@@ -274,7 +288,7 @@ export default function GoogleAnalysisPage({ apiBase, leads = [] }) {
 
   return <div className="ga-page">
     <header className="ga-hero"><div><span className="ga-kicker"><Sparkles size={14}/>Inteligência local ProspectSites</span><h1>Análise Google</h1><p>Diagnóstico transparente do perfil, reputação e concorrência local.</p></div><div className="ga-storage-note"><ShieldCheck size={16}/><span>Nenhuma análise é salva no banco</span></div></header>
-    {step === "search" ? <SearchStep api={api} capabilities={capabilities} leads={availableLeads} archivedLoaded={archivedLoaded} archivedLoading={archivedLoading} archivedNextCursor={archivedCursor} onLoadArchived={loadArchivedLeads} onSelect={selectCompany} notify={notify}/> : step === "configure" ? <ConfigureStep company={company} demo={!capabilities.live_configured} onBack={() => setStep("search")} onStart={start}/> : step === "progress" ? <ProgressStep job={job}/> : report ? <ReportView report={report} onNew={reset} notify={notify}/> : null}
-    {notice && <div className={`ga-notice ${notice.success ? "success" : ""}`}>{notice.success ? <CheckCircle2 size={17}/> : <AlertTriangle size={17}/>}<span>{notice.message}</span><button onClick={() => setNotice(null)}>×</button></div>}
+    {!capabilities ? <div className="ga-archived-status" role="status">{capabilitiesError ? <><AlertTriangle size={14}/>Não foi possível verificar a análise. Atualize a página para tentar novamente.</> : <><LoaderCircle className="spin" size={14}/>Verificando disponibilidade da análise...</>}</div> : step === "search" ? <SearchStep api={api} capabilities={capabilities} leads={availableLeads} archivedLoaded={archivedLoaded} archivedLoading={archivedLoading} archivedNextCursor={archivedCursor} onLoadArchived={loadArchivedLeads} onSelect={selectCompany} notify={notify}/> : step === "configure" ? <ConfigureStep company={company} demo={!capabilities.live_configured} onBack={() => setStep("search")} onStart={start}/> : step === "progress" ? <ProgressStep job={job}/> : report ? <ReportView report={report} onNew={reset} notify={notify}/> : null}
+    {notice && <div role={notice.success ? "status" : "alert"} className={`ga-notice ${notice.success ? "success" : ""}`}>{notice.success ? <CheckCircle2 size={17}/> : <AlertTriangle size={17}/>}<span>{notice.message}</span><button onClick={() => setNotice(null)}>×</button></div>}
   </div>;
 }

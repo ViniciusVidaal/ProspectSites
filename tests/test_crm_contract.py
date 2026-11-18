@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from backend.crm_models import HermesAnalysisRequest, HermesEvent, HermesProspectLookup
 from backend.crm_repository import CrmRepository, extract_message_text, normalize_phone
-from backend.crm_router import authenticate_hermes, hermes_archived_prospect, hermes_event, hermes_lookup_prospect, hermes_start_analysis
+from backend.crm_router import authenticate_hermes, hermes_analysis_image, hermes_archived_prospect, hermes_event, hermes_lookup_prospect, hermes_start_analysis
 from backend.firestore_repository import FirestoreRepository
 
 
@@ -105,6 +105,26 @@ class HermesContractTests(unittest.TestCase):
         repo.save_instance.assert_not_called()
 
     @patch("backend.crm_router.lead_repository")
+    @patch("backend.crm_router.repository")
+    @patch("backend.crm_router.get_settings")
+    def test_stage_change_rejects_mismatched_lead_before_writing_card(self, get_settings, repository, lead_repository):
+        get_settings.return_value = SimpleNamespace(hermes_webhook_secret="secret-123")
+        repo = MagicMock()
+        repo.begin_integration_event.return_value = True
+        repo.resolve_stage.return_value = {"id": "em_atendimento"}
+        repository.return_value = repo
+        lead_repository.return_value.find_prospects_by_phone.return_value = {
+            "matches": [{"place_id": "other", "company_name": "Outra empresa"}],
+            "requires_confirmation": False,
+        }
+        event = HermesEvent.model_validate({"event": "lead.stage.changed", "event_id": "evt-mismatch-01", "instance": "whatsapp-01", "data": {"phone": "5561900000000", "lead_place_id": "expected", "stage_id": "em_atendimento"}})
+        with self.assertRaises(HTTPException) as error:
+            hermes_event(event, x_hermes_secret="secret-123", authorization=None)
+        self.assertEqual(error.exception.status_code, 422)
+        repo.upsert_contact.assert_not_called()
+        repo.move_contact.assert_not_called()
+
+    @patch("backend.crm_router.lead_repository")
     @patch("backend.crm_router.get_settings")
     def test_hermes_can_read_archived_profile_by_place_id(self, get_settings, lead_repository):
         get_settings.return_value = SimpleNamespace(hermes_webhook_secret="secret-123")
@@ -195,6 +215,28 @@ class HermesContractTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as result:
             asyncio.run(hermes_start_analysis(request, BackgroundTasks(), "secret-123", None))
         self.assertEqual(result.exception.status_code, 409)
+
+    @patch("backend.crm_router.get_settings")
+    def test_image_requires_matching_lead_and_remains_available(self, get_settings):
+        from backend import google_analysis_router
+        get_settings.return_value = SimpleNamespace(hermes_webhook_secret="secret-123")
+        report = {"lead_place_id": "place-1", "company": {"name": "Empresa QA"}, "score_reliable": True, "score": 75}
+        with patch.dict(google_analysis_router.transient_reports, {"report-1": report}):
+            with self.assertRaises(HTTPException) as rejected:
+                hermes_analysis_image("report-1", "other-place", "secret-123", None)
+            self.assertEqual(rejected.exception.status_code, 409)
+            response = hermes_analysis_image("report-1", "place-1", "secret-123", None)
+            self.assertEqual(response.media_type, "image/png")
+            self.assertTrue(response.body.startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertEqual(response.headers["cache-control"], "no-store")
+            self.assertIn("report-1", google_analysis_router.transient_reports)
+
+    @patch("backend.crm_router.get_settings")
+    def test_image_rejects_invalid_secret(self, get_settings):
+        get_settings.return_value = SimpleNamespace(hermes_webhook_secret="secret-123")
+        with self.assertRaises(HTTPException) as rejected:
+            hermes_analysis_image("report-1", "place-1", "wrong", None)
+        self.assertEqual(rejected.exception.status_code, 401)
 
 
 if __name__ == "__main__":

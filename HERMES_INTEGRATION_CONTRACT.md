@@ -20,13 +20,16 @@ Não coloque o segredo em código, arquivos versionados, mensagens ou logs.
    da análise; `409` significa dados divergentes, múltiplos candidatos ou busca
    incompleta. Isso pode consumir a cota da SerpApi; não repetir sem necessidade.
 4. `GET /api/crm/integrations/hermes/analysis/jobs/{job_id}` consulta o andamento.
-   Quando existir `report_id`, consulte
+   Quando existir `report_id`, obtenha primeiro o PNG em
+   `GET /api/crm/integrations/hermes/analysis/reports/{report_id}/image.png?place_id=ID_CONFIRMADO`.
+   O `place_id` deve ser idêntico ao lead da análise; divergências retornam 409.
+   Depois, se necessário, consulte os dados em
    `GET /api/crm/integrations/hermes/analysis/reports/{report_id}`. O relatório é
-   temporário, consumido na primeira leitura e pode desaparecer após reinício.
+   temporário, consumido na primeira leitura JSON e pode desaparecer após reinício.
    Confira `demo`, `score_reliable`, cobertura e limitações antes de apresentá-lo.
-5. O endpoint retorna dados, não um PNG. O PNG continua sendo gerado pelo
-   frontend; download e envio pelo Hermes dependem de implementação e validação
-   no Hermes. Nenhum envio de WhatsApp é feito pelo ProspectSites.
+5. A imagem da API é um resumo próprio, não uma reprodução pixel a pixel da
+   imagem gerada pelo navegador. O Hermes deve confirmar o destinatário antes de
+   enviar. Nenhum envio de WhatsApp é feito pelo ProspectSites.
 
 Use `lead.stage.changed` para movimentar o card, após identificar o lead e a
 coluna. Isso não ativa movimentações automáticas por si só. Não grave nem altere

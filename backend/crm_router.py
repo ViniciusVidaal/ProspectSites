@@ -9,9 +9,10 @@ from .crm_models import (
     CrmContactUpdate, CrmInstanceCreate, CrmInstanceUpdate, CrmStageCreate, CrmStageDelete,
     CrmStageMove, CrmStageReorder, CrmStageUpdate, HermesEvent, HermesProspectLookup, HermesAnalysisRequest,
 )
-from .crm_repository import CrmRepository
+from .crm_repository import CrmRepository, normalize_phone, stable_id
 from .firestore_repository import FirestoreRepository
 from .google_analysis_models import GoogleAnalysisRequest
+from .google_analysis_image import render_analysis_png
 from . import google_analysis_router
 
 
@@ -213,6 +214,22 @@ def hermes_analysis_report(report_id: str, response: Response, x_hermes_secret: 
     return google_analysis_router.consume_report(report_id, response)
 
 
+@router.get("/integrations/hermes/analysis/reports/{report_id}/image.png")
+def hermes_analysis_image(
+    report_id: str,
+    place_id: str = Query(min_length=1, max_length=200),
+    x_hermes_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+):
+    authenticate_hermes(x_hermes_secret, authorization)
+    report = google_analysis_router.transient_reports.get(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Análise temporária não encontrada ou já descartada.")
+    if report.get("lead_place_id") != place_id:
+        raise HTTPException(status_code=409, detail="O relatório não corresponde ao lead informado.")
+    return Response(content=render_analysis_png(report), media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
 @router.get("/integrations/hermes/prospects/{place_id}")
 def hermes_archived_prospect(
     place_id: str,
@@ -248,12 +265,22 @@ def hermes_event(
             result = repo.upsert_contact(payload.instance, payload.data)
         elif payload.event == "lead.stage.changed":
             contact_id = str(payload.data.get("contact_id") or "")
-            if not contact_id:
-                contact_id = repo.upsert_contact(payload.instance, payload.data)["id"]
             stage_value = str(
                 payload.data.get("stage_id") or payload.data.get("stage") or payload.data.get("stage_name") or ""
             )
             stage = repo.resolve_stage(stage_value)
+            contact_data = dict(payload.data)
+            place_id = str(contact_data.get("lead_place_id") or "").strip()
+            if place_id:
+                lookup = lead_repository().find_prospects_by_phone(str(contact_data.get("phone") or ""))
+                match = next((item for item in lookup["matches"] if item["place_id"] == place_id), None)
+                if not match or lookup["requires_confirmation"]:
+                    raise ValueError("Lead não confirmado pelo telefone ou identificação ambígua; nenhum card foi movido.")
+                if contact_id and contact_id != stable_id(normalize_phone(str(contact_data.get("phone") or ""))):
+                    raise ValueError("O card informado não corresponde ao telefone confirmado.")
+                contact_data["name"] = match["company_name"]
+            if not contact_id:
+                contact_id = repo.upsert_contact(payload.instance, contact_data)["id"]
             result = repo.move_contact(
                 contact_id,
                 stage["id"],

@@ -125,6 +125,22 @@ def test_manual_company_search_uses_name_and_full_address():
     assert params["q"] == "JP do Gás Vicente Pires St. Hab. Vicente Pires loja 3 - Vicente Pires, Brasília - DF, 72007-535"
 
 
+def test_company_search_includes_single_place_result():
+    provider = SerpApiProvider("test-key")
+    provider._get = AsyncMock(return_value={"place_results": {"title": "Posto da Torre", "place_id": "place-test", "address": "Brasília, DF"}})
+    results = asyncio.run(provider.search_companies("Posto da Torre", "Brasília, DF"))
+    assert len(results) == 1
+    assert results[0]["name"] == "Posto da Torre"
+    assert results[0]["place_id"] == "place-test"
+
+
+def test_company_search_keeps_multiple_results_and_handles_empty():
+    provider = SerpApiProvider("test-key")
+    provider._get = AsyncMock(side_effect=[{"local_results": [{"title": "Primeira"}, {"title": "Segunda"}]}, {}])
+    assert [item["name"] for item in asyncio.run(provider.search_companies("Empresa"))] == ["Primeira", "Segunda"]
+    assert asyncio.run(provider.search_companies("Inexistente")) == []
+
+
 def test_completed_analysis_is_transient_and_consumed_once():
     google_router.jobs.clear()
     google_router.request_jobs.clear()

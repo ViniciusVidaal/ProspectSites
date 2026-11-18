@@ -90,6 +90,8 @@ function LeadDetails({ contact, stages, instances, messages, activities, loading
   const [savingResponsible, setSavingResponsible] = useState(false);
   useEffect(() => { setResponsible(contact?.responsible || ""); }, [contact]);
   if (!contact) return null;
+  const phoneDigits = String(contact.phone || "").replace(/\D/g, "");
+  const whatsappPhone = phoneDigits.length === 10 || phoneDigits.length === 11 ? `55${phoneDigits}` : phoneDigits;
 
   async function saveResponsible() {
     setSavingResponsible(true);
@@ -109,6 +111,7 @@ function LeadDetails({ contact, stages, instances, messages, activities, loading
           <div><span>WhatsApp mais recente</span><InstanceBadge instances={instances} name={contact.last_instance_name}/></div>
           <div><span>Primeiro contato</span><strong>{formatDate(contact.first_contact_at)}</strong></div>
           <div><span>Última interação</span><strong>{formatDate(contact.last_interaction_at)}</strong></div>
+          {whatsappPhone.length >= 12 && whatsappPhone.length <= 15 && <div><span>Contato</span><a href={`https://wa.me/${whatsappPhone}`} target="_blank" rel="noopener noreferrer">Abrir WhatsApp</a></div>}
           <div><span>Mensagens</span><strong>{contact.message_count || 0}</strong></div>
           <label className="crm-responsible-field"><span>Responsável</span><div><input value={responsible} onChange={(event) => setResponsible(event.target.value)} placeholder="Sem responsável" maxLength="80"/><button onClick={saveResponsible} disabled={savingResponsible} aria-label="Salvar responsável">{savingResponsible ? <LoaderCircle className="spin" size={14}/> : <Save size={14}/>}</button></div></label>
         </div>

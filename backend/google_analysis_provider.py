@@ -92,7 +92,10 @@ class SerpApiProvider:
     async def search_companies(self, name: str, address: str = "") -> list[dict[str, Any]]:
         query = " ".join(part.strip() for part in (name, address) if part.strip())
         payload = await self._get({"engine": "google_maps", "type": "search", "q": query, "hl": "pt-BR", "gl": "br"})
-        return [self._company(item) for item in (payload.get("local_results") or [])[:10]]
+        results = payload.get("local_results") or []
+        if not results and isinstance(payload.get("place_results"), dict) and payload["place_results"].get("title"):
+            results = [payload["place_results"]]
+        return [self._company(item) for item in results[:10]]
 
     async def business_info(self, company: dict[str, Any]) -> dict[str, Any]:
         params: dict[str, Any] = {"engine": "google_maps", "hl": "pt-BR", "gl": "br"}
