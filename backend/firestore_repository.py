@@ -239,6 +239,39 @@ class FirestoreRepository:
             }
         return self.get_archived_profile(place_id)
 
+    def find_prospects_by_phone(self, phone: str, scan_limit: int = 500) -> dict[str, Any]:
+        """Read-only lookup; report incomplete coverage of unindexed legacy leads."""
+        from .crm_repository import normalize_phone
+
+        number = normalize_phone(phone)
+        if not 10 <= len(number) <= 15:
+            raise ValueError("Informe um telefone válido com DDD e, se possível, DDI.")
+        matches: dict[str, dict[str, Any]] = {}
+        active = list(self.collection.limit(scan_limit + 1).stream())
+        for snapshot in active[:scan_limit]:
+            data = snapshot.to_dict() or {}
+            if number in {normalize_phone(str(data.get(key) or "")) for key in ("phone", "cnpj_phone")}:
+                lead = self._lead(snapshot)
+                matches[lead.place_id] = {
+                    "place_id": lead.place_id, "company_name": lead.company_name,
+                    "phone": lead.phone, "address": lead.address, "neighborhood": lead.neighborhood,
+                    "city": lead.city, "state": lead.state, "maps_link": lead.maps_link,
+                    "archived": bool(lead.archived),
+                    "matched_phone_type": "phone" if normalize_phone(lead.phone) == number else "cnpj_phone",
+                }
+        archived = list(self.blocklist.where("phone_digits", "==", number).limit(21).stream())
+        for snapshot in archived[:20]:
+            profile = self._archived_profile(snapshot)
+            profile["matched_phone_type"] = "phone"
+            matches.setdefault(profile["place_id"], profile)
+        return {
+            "matches": list(matches.values()),
+            "active_scan_limited": len(active) > scan_limit,
+            "archived_results_limited": len(archived) > 20,
+            "legacy_archived_without_phone_not_searchable": True,
+            "requires_confirmation": len(matches) != 1 or len(active) > scan_limit or len(archived) > 20,
+        }
+
     def append_new(self, leads: list[Lead]) -> list[Lead]:
         unique = {lead.place_id: lead for lead in leads if lead.place_id}
         if not unique:

@@ -2,12 +2,13 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException, Response
 from pydantic import ValidationError
 
-from backend.crm_models import HermesEvent
+from backend.crm_models import HermesAnalysisRequest, HermesEvent, HermesProspectLookup
 from backend.crm_repository import CrmRepository, extract_message_text, normalize_phone
-from backend.crm_router import authenticate_hermes, hermes_archived_prospect, hermes_event
+from backend.crm_router import authenticate_hermes, hermes_archived_prospect, hermes_event, hermes_lookup_prospect, hermes_start_analysis
+from backend.firestore_repository import FirestoreRepository
 
 
 class HermesContractTests(unittest.TestCase):
@@ -142,6 +143,58 @@ class HermesContractTests(unittest.TestCase):
 
         self.assertEqual(result, "place-archived")
         archived_collection.where.assert_called_once_with("phone_digits", "==", "5561999999999")
+
+    @patch("backend.crm_router.lead_repository")
+    @patch("backend.crm_router.get_settings")
+    def test_lookup_requires_secret_before_reading(self, get_settings, lead_repository):
+        get_settings.return_value = SimpleNamespace(hermes_webhook_secret="secret-123")
+        with self.assertRaises(HTTPException) as result:
+            hermes_lookup_prospect(HermesProspectLookup(phone="61999999999"), Response(), "wrong", None)
+        self.assertEqual(result.exception.status_code, 401)
+        lead_repository.assert_not_called()
+
+    def test_phone_lookup_reports_duplicates_and_scan_limit(self):
+        repo = object.__new__(FirestoreRepository)
+        repo.collection = MagicMock()
+        repo.blocklist = MagicMock()
+        snapshots = []
+        for index in range(3):
+            item = MagicMock()
+            item.to_dict.return_value = {"phone": "61999999999" if index < 2 else ""}
+            snapshots.append(item)
+        repo.collection.limit.return_value.stream.return_value = snapshots
+        repo.blocklist.where.return_value.limit.return_value.stream.return_value = []
+        with patch.object(repo, "_lead", side_effect=[
+            SimpleNamespace(place_id=str(i), company_name="Empresa", phone="61999999999", address="", neighborhood="", city="", state="", maps_link="", archived=False)
+            for i in range(2)
+        ]):
+            result = repo.find_prospects_by_phone("5561999999999", scan_limit=2)
+        self.assertEqual(len(result["matches"]), 2)
+        self.assertTrue(result["active_scan_limited"])
+        self.assertTrue(result["requires_confirmation"])
+
+    @patch("backend.crm_router.get_settings")
+    def test_analysis_requires_customer_acceptance(self, get_settings):
+        import asyncio
+        get_settings.return_value = SimpleNamespace(hermes_webhook_secret="secret-123")
+        request = HermesAnalysisRequest(place_id="place-1", phone="61999999999", customer_accepted=False)
+        with self.assertRaises(HTTPException) as result:
+            asyncio.run(hermes_start_analysis(request, BackgroundTasks(), "secret-123", None))
+        self.assertEqual(result.exception.status_code, 422)
+
+    @patch("backend.crm_router.lead_repository")
+    @patch("backend.crm_router.get_settings")
+    def test_analysis_rejects_ambiguous_phone(self, get_settings, lead_repository):
+        import asyncio
+        get_settings.return_value = SimpleNamespace(hermes_webhook_secret="secret-123")
+        lead_repository.return_value.find_prospects_by_phone.return_value = {
+            "matches": [{"place_id": "place-1"}, {"place_id": "place-2"}],
+            "active_scan_limited": False, "archived_results_limited": False,
+        }
+        request = HermesAnalysisRequest(place_id="place-1", phone="61999999999", customer_accepted=True)
+        with self.assertRaises(HTTPException) as result:
+            asyncio.run(hermes_start_analysis(request, BackgroundTasks(), "secret-123", None))
+        self.assertEqual(result.exception.status_code, 409)
 
 
 if __name__ == "__main__":

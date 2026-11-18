@@ -13,10 +13,11 @@ from .config import Settings
 
 
 DEFAULT_STAGES = (
-    ("novo", "Novo lead", "#4f8cff"),
-    ("contato", "Em contato", "#f59e0b"),
-    ("negociacao", "Negociação", "#8b5cf6"),
-    ("fechado", "Fechado", "#16a36a"),
+    ("aguardando_resposta", "Aguardando resposta", "#4f8cff"),
+    ("em_atendimento", "Em atendimento", "#f59e0b"),
+    ("analise_aceita", "Análise aceita", "#06b6d4"),
+    ("em_negociacao", "Em negociação", "#8b5cf6"),
+    ("encaminhado_equipe", "Encaminhado à equipe", "#16a36a"),
     ("perdido", "Perdido", "#d94a5d"),
 )
 

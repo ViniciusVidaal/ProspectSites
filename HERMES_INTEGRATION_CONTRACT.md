@@ -1,6 +1,36 @@
 # Contrato de integração Hermes → ProspectSites CRM
 
-Versão: `1.1`
+Versão: `1.2` (preparada no código; publicação e conexão real precisam ser confirmadas)
+
+## Identificação por telefone e análise solicitada pelo Hermes
+
+Todas as rotas abaixo exigem `X-Hermes-Secret` ou `Authorization: Bearer ...`.
+Não coloque o segredo em código, arquivos versionados, mensagens ou logs.
+
+1. `POST /api/crm/integrations/hermes/prospects/lookup`, corpo
+   `{"phone":"5561999999999"}`: retorna `matches` e avisos de cobertura.
+   Não escolha automaticamente se houver zero ou múltiplos resultados, ou se
+   `requires_confirmation` for verdadeiro. A busca examina até 500 leads ativos;
+   perfis arquivados antigos sem telefone não podem ser localizados pelo número.
+2. `GET /api/crm/integrations/hermes/stages`: lista os IDs e nomes atuais das
+   colunas. Não presuma que o quadro salvo use as etapas padrão do código.
+3. `POST /api/crm/integrations/hermes/analysis/jobs`, corpo
+   `{"place_id":"ID_CONFIRMADO","phone":"5561999999999","customer_accepted":true}`:
+   exige aceitação do cliente e validação do telefone. Responde com o trabalho
+   da análise; `409` significa dados divergentes, múltiplos candidatos ou busca
+   incompleta. Isso pode consumir a cota da SerpApi; não repetir sem necessidade.
+4. `GET /api/crm/integrations/hermes/analysis/jobs/{job_id}` consulta o andamento.
+   Quando existir `report_id`, consulte
+   `GET /api/crm/integrations/hermes/analysis/reports/{report_id}`. O relatório é
+   temporário, consumido na primeira leitura e pode desaparecer após reinício.
+   Confira `demo`, `score_reliable`, cobertura e limitações antes de apresentá-lo.
+5. O endpoint retorna dados, não um PNG. O PNG continua sendo gerado pelo
+   frontend; download e envio pelo Hermes dependem de implementação e validação
+   no Hermes. Nenhum envio de WhatsApp é feito pelo ProspectSites.
+
+Use `lead.stage.changed` para movimentar o card, após identificar o lead e a
+coluna. Isso não ativa movimentações automáticas por si só. Não grave nem altere
+as mensagens ou sessões de WhatsApp apenas para realizar estas consultas.
 
 ## Recuperação do perfil do lead para Análise Google
 

@@ -26,6 +26,18 @@ class CrmContactUpdate(BaseModel):
     responsible: str | None = Field(default=None, max_length=80)
 
 
+class HermesProspectLookup(BaseModel):
+    phone: str = Field(min_length=8, max_length=40)
+
+
+class HermesAnalysisRequest(BaseModel):
+    place_id: str = Field(min_length=1, max_length=200, pattern=r"^[^/]+$")
+    phone: str = Field(min_length=8, max_length=40)
+    customer_accepted: bool
+    keyword: str = Field(default="", max_length=240)
+    location: str = Field(default="", max_length=180)
+
+
 class CrmStageDelete(BaseModel):
     move_to_stage_id: str | None = Field(default=None, max_length=120)
 

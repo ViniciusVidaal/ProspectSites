@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import hmac
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, Response
 
 from .config import get_settings
 from .crm_models import (
     CrmContactUpdate, CrmInstanceCreate, CrmInstanceUpdate, CrmStageCreate, CrmStageDelete,
-    CrmStageMove, CrmStageReorder, CrmStageUpdate, HermesEvent,
+    CrmStageMove, CrmStageReorder, CrmStageUpdate, HermesEvent, HermesProspectLookup, HermesAnalysisRequest,
 )
 from .crm_repository import CrmRepository
 from .firestore_repository import FirestoreRepository
+from .google_analysis_models import GoogleAnalysisRequest
+from . import google_analysis_router
 
 
 router = APIRouter(prefix="/api/crm", tags=["CRM"])
@@ -131,15 +133,84 @@ def authenticate_hermes(x_hermes_secret: str | None, authorization: str | None) 
 @router.get("/integrations/hermes/contract")
 def hermes_contract():
     return {
-        "version": "1.1",
+        "version": "1.2",
         "endpoint": "/api/crm/integrations/hermes/events",
         "archived_profile_endpoint": "/api/crm/integrations/hermes/prospects/{place_id}",
+        "phone_lookup_endpoint": "/api/crm/integrations/hermes/prospects/lookup",
+        "stages_endpoint": "/api/crm/integrations/hermes/stages",
+        "analysis_endpoint": "/api/crm/integrations/hermes/analysis/jobs",
         "authentication": ["X-Hermes-Secret", "Authorization: Bearer <secret>"],
         "events": [
             "message.upsert", "connection.update", "contact.upsert",
             "lead.stage.changed", "heartbeat",
         ],
     }
+
+
+@router.post("/integrations/hermes/prospects/lookup")
+def hermes_lookup_prospect(
+    payload: HermesProspectLookup,
+    response: Response,
+    x_hermes_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+):
+    authenticate_hermes(x_hermes_secret, authorization)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return lead_repository().find_prospects_by_phone(payload.phone)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/integrations/hermes/stages")
+def hermes_stages(
+    x_hermes_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+):
+    authenticate_hermes(x_hermes_secret, authorization)
+    return repository().list_stages()
+
+
+@router.post("/integrations/hermes/analysis/jobs", status_code=202)
+async def hermes_start_analysis(
+    payload: HermesAnalysisRequest,
+    background_tasks: BackgroundTasks,
+    x_hermes_secret: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+):
+    authenticate_hermes(x_hermes_secret, authorization)
+    if not payload.customer_accepted:
+        raise HTTPException(status_code=422, detail="A análise exige a aceitação do cliente.")
+    try:
+        matches = lead_repository().find_prospects_by_phone(payload.phone)
+        match = next((item for item in matches["matches"] if item["place_id"] == payload.place_id), None)
+        if not match:
+            raise HTTPException(status_code=409, detail="O telefone não foi confirmado para esse lead; confirme os dados antes de analisar.")
+        if len(matches["matches"]) != 1 or matches["active_scan_limited"] or matches["archived_results_limited"]:
+            raise HTTPException(status_code=409, detail="A identificação é ambígua ou a busca está incompleta; confirme o lead com a equipe.")
+        company = {
+            "name": match["company_name"], "place_id": match["place_id"],
+            "address": match["address"], "neighborhood": match["neighborhood"],
+            "city": match["city"], "state": match["state"],
+            "maps_url": match["maps_link"], "from_lead": True,
+        }
+        request = GoogleAnalysisRequest(company=company, keyword=payload.keyword, location=payload.location,
+                                        lead_place_id=payload.place_id, demo=False)
+        return await google_analysis_router.create_analysis(request, background_tasks)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/integrations/hermes/analysis/jobs/{job_id}")
+def hermes_analysis_status(job_id: str, x_hermes_secret: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+    authenticate_hermes(x_hermes_secret, authorization)
+    return google_analysis_router.get_analysis_job(job_id)
+
+
+@router.get("/integrations/hermes/analysis/reports/{report_id}")
+def hermes_analysis_report(report_id: str, response: Response, x_hermes_secret: str | None = Header(default=None), authorization: str | None = Header(default=None)):
+    authenticate_hermes(x_hermes_secret, authorization)
+    return google_analysis_router.consume_report(report_id, response)
 
 
 @router.get("/integrations/hermes/prospects/{place_id}")
