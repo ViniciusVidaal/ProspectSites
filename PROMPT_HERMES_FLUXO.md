@@ -1,5 +1,10 @@
 # Fluxo Hermes + ProspectSites — prompt para o Codex do Hermes
 
+> Atualização: a geração do PNG original agora foi preparada também na rota
+> autenticada do backend, com o mesmo desenho do navegador. Após publicar e
+> validar essa versão, prefira a rota de imagem documentada no contrato; as
+> instruções de Playwright abaixo descrevem o fluxo anterior e são alternativa.
+
 ```text
 Você está no projeto Hermes. Prepare o fluxo comercial abaixo integrando o
 ProspectSites por API e usando Playwright somente para a Análise Google e o

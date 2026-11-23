@@ -60,6 +60,14 @@ def test_unknown_items_do_not_receive_zero():
     assert unknown["points"] is None
 
 
+@pytest.mark.parametrize("state", ["absent", "improve", "unknown", "good"])
+def test_website_is_first_without_falsifying_evidence(state):
+    result = score_profile({"website": {"state": state, "evidence": "Evidência do site"}, "description": {"state": "absent"}})
+    assert result["priorities"][0]["key"] == "website"
+    assert result["checklist"][4]["state"] == state
+    assert result["priorities"][0]["reason"] == "Evidência do site"
+
+
 def test_missing_serpapi_fields_stay_unknown():
     evidence = normalize_live_evidence({"title": "Perfil parcial"})
     assert evidence["products_services"]["state"] == "unknown"

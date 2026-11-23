@@ -4,6 +4,8 @@
 .venv
 **/__pycache__
 **/*.pyc
-frontend
+frontend/node_modules
+frontend/dist
+frontend/.env*
 google-service-account.json
 *.log

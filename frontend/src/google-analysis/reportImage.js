@@ -1,6 +1,6 @@
 const IMAGE_WIDTH = 1080;
 const IMAGE_HEIGHT = 1350;
-const FONT = 'Inter, Manrope, Arial, sans-serif';
+const FONT = 'ProspectReport, Arial, sans-serif';
 
 function roundedRect(ctx, x, y, width, height, radius) {
   const safeRadius = Math.min(radius, width / 2, height / 2);
@@ -149,8 +149,11 @@ export function selectImageImprovements(report) {
       if (b.key === 'website' && a.key !== 'website') return 1;
       return (stateOrder[a.state] - stateOrder[b.state]) || ((b.weight || 0) - (a.weight || 0));
     });
+  if (!actionable.some((item) => item.key === 'website')) {
+    actionable.unshift({ key: 'website', label: 'Site profissional' });
+  }
   const reportedCount = Number(report.improvements_count);
-  const displayLimit = Number.isFinite(reportedCount) ? Math.max(0, Math.min(2, reportedCount)) : Math.min(2, actionable.length);
+  const displayLimit = Number.isFinite(reportedCount) ? Math.max(1, Math.min(2, reportedCount)) : Math.min(2, actionable.length);
 
   return actionable.slice(0, displayLimit).map((item) => {
     const priority = priorities.find((entry) => entry.key === item.key);
@@ -322,7 +325,7 @@ export function buildGoogleAnalysisImage(report) {
 }
 
 export async function downloadGoogleAnalysisImage(report) {
-  if (document.fonts?.ready) await document.fonts.ready;
+  if (document.fonts) await Promise.all([500, 600, 700, 800, 900].map((weight) => document.fonts.load(`${weight} 20px ProspectReport`)));
   const canvas = buildGoogleAnalysisImage(report);
   const blob = await new Promise((resolve, reject) => {
     canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Não foi possível criar a imagem.')), 'image/png', 1);

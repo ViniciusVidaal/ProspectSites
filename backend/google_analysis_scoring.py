@@ -89,9 +89,18 @@ def score_profile(evidence: dict[str, dict[str, Any]]) -> dict[str, Any]:
         }
         for item in sorted(
             (entry for entry in checklist if entry["state"] in {"absent", "improve"}),
-            key=lambda entry: (entry["state"] != "absent", -entry["weight"]),
+            key=lambda entry: (entry["key"] != "website", entry["state"] != "absent", -entry["weight"]),
         )[:3]
     ]
+    if not priorities or priorities[0]["key"] != "website":
+        website = next(item for item in checklist if item["key"] == "website")
+        priorities.insert(0, {
+            "key": "website", "title": "Site profissional",
+            "reason": website["evidence"],
+            "action": "Avalie um site profissional para apresentar a empresa e seus serviços.",
+            "impact": website["weight"],
+        })
+        priorities = priorities[:3]
     return {
         "score": score,
         "coverage": coverage,

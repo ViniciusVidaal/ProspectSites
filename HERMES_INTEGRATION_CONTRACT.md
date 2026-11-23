@@ -27,9 +27,11 @@ Não coloque o segredo em código, arquivos versionados, mensagens ou logs.
    `GET /api/crm/integrations/hermes/analysis/reports/{report_id}`. O relatório é
    temporário, consumido na primeira leitura JSON e pode desaparecer após reinício.
    Confira `demo`, `score_reliable`, cobertura e limitações antes de apresentá-lo.
-5. A imagem da API é um resumo próprio, não uma reprodução pixel a pixel da
-   imagem gerada pelo navegador. O Hermes deve confirmar o destinatário antes de
-   enviar. Nenhum envio de WhatsApp é feito pelo ProspectSites.
+5. A imagem da API usa o mesmo desenho e fonte da imagem gerada no navegador,
+   incluindo as melhorias e concorrentes. Os dados de análises realizadas em
+   momentos diferentes podem variar. O backend precisa de Chromium instalado;
+   a imagem Docker inclui essa dependência. O Hermes deve confirmar o
+   destinatário antes de enviar. O ProspectSites não envia mensagens.
 
 Use `lead.stage.changed` para movimentar o card, após identificar o lead e a
 coluna. Isso não ativa movimentações automáticas por si só. Não grave nem altere

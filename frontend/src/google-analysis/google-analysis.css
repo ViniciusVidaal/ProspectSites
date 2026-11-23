@@ -1,3 +1,4 @@
+@font-face { font-family: ProspectReport; src: url('./fonts/Inter-Variable.ttf') format('truetype'); font-style: normal; font-weight: 100 900; font-display: swap; }
 .ga-page { --ga-green:#176b45; --ga-deep:#123c29; --ga-mint:#eaf6ee; --ga-gold:#d9a441; display:grid; gap:18px; padding:26px 0 44px; color:var(--text); }
 .ga-page * { box-sizing:border-box; }
 .ga-hero { min-height:178px; display:flex; align-items:flex-end; justify-content:space-between; gap:24px; padding:30px; border:1px solid color-mix(in srgb,var(--accent) 24%,var(--line)); border-radius:22px; background:radial-gradient(circle at 85% 0%,rgba(217,164,65,.18),transparent 28%),linear-gradient(135deg,color-mix(in srgb,var(--panel) 92%,#effaf3),var(--panel)); box-shadow:var(--shadow); overflow:hidden; }
