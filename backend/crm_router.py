@@ -272,10 +272,15 @@ def hermes_event(
             contact_data = dict(payload.data)
             place_id = str(contact_data.get("lead_place_id") or "").strip()
             if place_id:
-                lookup = lead_repository().find_prospects_by_phone(str(contact_data.get("phone") or ""))
-                match = next((item for item in lookup["matches"] if item["place_id"] == place_id), None)
-                if not match or lookup["requires_confirmation"]:
-                    raise ValueError("Lead não confirmado pelo telefone ou identificação ambígua; nenhum card foi movido.")
+                match = lead_repository().get_prospect_profile(place_id)
+                event_phone = normalize_phone(str(contact_data.get("phone") or ""))
+                known_phones = {
+                    normalize_phone(str(match.get(field) or ""))
+                    for field in ("phone", "cnpj_phone")
+                    if match.get(field)
+                }
+                if not event_phone or event_phone not in known_phones:
+                    raise ValueError("O telefone informado não pertence ao lead indicado; nenhum card foi movido.")
                 if contact_id and contact_id != stable_id(normalize_phone(str(contact_data.get("phone") or ""))):
                     raise ValueError("O card informado não corresponde ao telefone confirmado.")
                 contact_data["name"] = match["company_name"]

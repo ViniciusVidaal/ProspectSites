@@ -113,14 +113,18 @@ class HermesContractTests(unittest.TestCase):
         repo.begin_integration_event.return_value = True
         repo.resolve_stage.return_value = {"id": "em_atendimento"}
         repository.return_value = repo
-        lead_repository.return_value.find_prospects_by_phone.return_value = {
-            "matches": [{"place_id": "other", "company_name": "Outra empresa"}],
-            "requires_confirmation": False,
+        lead_repository.return_value.get_prospect_profile.return_value = {
+            "place_id": "expected",
+            "company_name": "Empresa esperada",
+            "phone": "5561999999999",
+            "cnpj_phone": "",
         }
         event = HermesEvent.model_validate({"event": "lead.stage.changed", "event_id": "evt-mismatch-01", "instance": "whatsapp-01", "data": {"phone": "5561900000000", "lead_place_id": "expected", "stage_id": "em_atendimento"}})
         with self.assertRaises(HTTPException) as error:
             hermes_event(event, x_hermes_secret="secret-123", authorization=None)
         self.assertEqual(error.exception.status_code, 422)
+        lead_repository.return_value.get_prospect_profile.assert_called_once_with("expected")
+        lead_repository.return_value.find_prospects_by_phone.assert_not_called()
         repo.upsert_contact.assert_not_called()
         repo.move_contact.assert_not_called()
 

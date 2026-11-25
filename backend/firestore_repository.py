@@ -229,6 +229,7 @@ class FirestoreRepository:
                 "place_id": lead.place_id,
                 "company_name": lead.company_name,
                 "phone": lead.phone,
+                "cnpj_phone": lead.cnpj_phone,
                 "address": lead.address,
                 "neighborhood": lead.neighborhood,
                 "city": lead.city,

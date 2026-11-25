@@ -18,7 +18,7 @@ from .sheets import SheetsRepository
 from .crm_router import router as crm_router
 from .google_analysis_router import router as google_analysis_router
 
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 
 
 app = FastAPI(title="Prospect Sites API", version=APP_VERSION)
@@ -118,7 +118,7 @@ def health():
         return {
             "status": "ok",
             "version": APP_VERSION,
-            "phone_lookup": "indexed_v1",
+            "phone_lookup": "indexed_v1_direct_place_id",
             "database": "firestore",
             "firebase_credentials": bool(settings.firebase_service_account_info),
             "legacy_sheet_migration_available": bool(
