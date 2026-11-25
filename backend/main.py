@@ -18,7 +18,10 @@ from .sheets import SheetsRepository
 from .crm_router import router as crm_router
 from .google_analysis_router import router as google_analysis_router
 
-app = FastAPI(title="Prospect Sites API", version="2.0.0")
+APP_VERSION = "2.0.1"
+
+
+app = FastAPI(title="Prospect Sites API", version=APP_VERSION)
 app.include_router(crm_router)
 app.include_router(google_analysis_router)
 jobs: dict[str, Job] = {}
@@ -102,7 +105,7 @@ def root():
     return {
         "name": "Prospect Sites API",
         "status": "online",
-        "version": "2.0.0",
+        "version": APP_VERSION,
         "health": "/health",
         "docs": "/docs",
     }
@@ -114,6 +117,8 @@ def health():
         settings = get_settings()
         return {
             "status": "ok",
+            "version": APP_VERSION,
+            "phone_lookup": "indexed_v1",
             "database": "firestore",
             "firebase_credentials": bool(settings.firebase_service_account_info),
             "legacy_sheet_migration_available": bool(
