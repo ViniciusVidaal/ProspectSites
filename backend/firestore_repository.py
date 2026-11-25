@@ -11,6 +11,7 @@ from firebase_admin import credentials, firestore
 
 from .config import Settings
 from .models import Lead
+from .phones import normalize_phone
 
 
 LEAD_FIELDS = (
@@ -54,15 +55,12 @@ class FirestoreRepository:
 
     @staticmethod
     def _blocklist_document(lead: Lead) -> dict[str, Any]:
-        phone_digits = "".join(character for character in lead.phone if character.isdigit())
-        if len(phone_digits) in {10, 11}:
-            phone_digits = f"55{phone_digits}"
         return {
             "place_id": lead.place_id,
             "company_name": lead.company_name,
             "company_name_normalized": normalize_text(lead.company_name),
             "phone": lead.phone,
-            "phone_digits": phone_digits,
+            "phone_digits": normalize_phone(lead.phone),
             "address": lead.address,
             "neighborhood": lead.neighborhood,
             "city": lead.city,
@@ -119,6 +117,8 @@ class FirestoreRepository:
         data.update({
             "collected_on": collected_on(lead.date),
             "company_name_normalized": normalize_text(lead.company_name),
+            "phone_digits": normalize_phone(lead.phone),
+            "cnpj_phone_digits": normalize_phone(lead.cnpj_phone),
             "updated_at": firestore.SERVER_TIMESTAMP,
         })
         return data
@@ -239,25 +239,28 @@ class FirestoreRepository:
             }
         return self.get_archived_profile(place_id)
 
-    def find_prospects_by_phone(self, phone: str, scan_limit: int = 500) -> dict[str, Any]:
-        """Read-only lookup; report incomplete coverage of unindexed legacy leads."""
-        from .crm_repository import normalize_phone
+    def find_prospects_by_phone(self, phone: str) -> dict[str, Any]:
+        """Find active and archived prospects through indexed phone fields."""
 
         number = normalize_phone(phone)
         if not 10 <= len(number) <= 15:
             raise ValueError("Informe um telefone válido com DDD e, se possível, DDI.")
         matches: dict[str, dict[str, Any]] = {}
-        active = list(self.collection.limit(scan_limit + 1).stream())
-        for snapshot in active[:scan_limit]:
-            data = snapshot.to_dict() or {}
-            if number in {normalize_phone(str(data.get(key) or "")) for key in ("phone", "cnpj_phone")}:
+        active_results_limited = False
+        for field, matched_phone_type in (
+            ("phone_digits", "phone"),
+            ("cnpj_phone_digits", "cnpj_phone"),
+        ):
+            snapshots = list(self.collection.where(field, "==", number).limit(21).stream())
+            active_results_limited = active_results_limited or len(snapshots) > 20
+            for snapshot in snapshots[:20]:
                 lead = self._lead(snapshot)
                 matches[lead.place_id] = {
                     "place_id": lead.place_id, "company_name": lead.company_name,
                     "phone": lead.phone, "address": lead.address, "neighborhood": lead.neighborhood,
                     "city": lead.city, "state": lead.state, "maps_link": lead.maps_link,
                     "archived": bool(lead.archived),
-                    "matched_phone_type": "phone" if normalize_phone(lead.phone) == number else "cnpj_phone",
+                    "matched_phone_type": matched_phone_type,
                 }
         archived = list(self.blocklist.where("phone_digits", "==", number).limit(21).stream())
         for snapshot in archived[:20]:
@@ -266,11 +269,60 @@ class FirestoreRepository:
             matches.setdefault(profile["place_id"], profile)
         return {
             "matches": list(matches.values()),
-            "active_scan_limited": len(active) > scan_limit,
+            "active_scan_limited": False,
+            "active_results_limited": active_results_limited,
             "archived_results_limited": len(archived) > 20,
             "legacy_archived_without_phone_not_searchable": True,
-            "requires_confirmation": len(matches) != 1 or len(active) > scan_limit or len(archived) > 20,
+            "requires_confirmation": (
+                len(matches) != 1 or active_results_limited or len(archived) > 20
+            ),
         }
+
+    def backfill_phone_indexes(self) -> int:
+        """Add normalized phone fields once without deleting or moving leads."""
+        marker = self.migrations.document("phone_lookup_indexes_v1")
+        if marker.get().exists:
+            return 0
+
+        updated = 0
+        scanned = 0
+        for collection, include_cnpj_phone in (
+            (self.collection, True),
+            (self.blocklist, False),
+        ):
+            snapshots = list(collection.stream())
+            scanned += len(snapshots)
+            for start in range(0, len(snapshots), 250):
+                batch = firestore.client().batch()
+                pending = 0
+                for snapshot in snapshots[start:start + 250]:
+                    data = snapshot.to_dict() or {}
+                    values = {
+                        "phone_digits": normalize_phone(str(data.get("phone") or "")),
+                    }
+                    if include_cnpj_phone:
+                        values["cnpj_phone_digits"] = normalize_phone(
+                            str(data.get("cnpj_phone") or "")
+                        )
+                    changes = {
+                        key: value
+                        for key, value in values.items()
+                        if str(data.get(key) or "") != value
+                    }
+                    if changes:
+                        batch.update(snapshot.reference, changes)
+                        pending += 1
+                if pending:
+                    batch.commit()
+                    updated += pending
+
+        marker.set({
+            "completed": True,
+            "documents_scanned": scanned,
+            "documents_updated": updated,
+            "completed_at": firestore.SERVER_TIMESTAMP,
+        })
+        return updated
 
     def append_new(self, leads: list[Lead]) -> list[Lead]:
         unique = {lead.place_id: lead for lead in leads if lead.place_id}
@@ -359,6 +411,7 @@ class FirestoreRepository:
     ) -> None:
         self.collection.document(place_id).update({
             "cnpj_phone": phone,
+            "cnpj_phone_digits": normalize_phone(phone),
             "registry_email": email,
             "cnpj_confidence": confidence,
             "cnpj_status": status,

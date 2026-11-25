@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from hashlib import sha256
-import re
 from typing import Any
 
 import firebase_admin
@@ -10,6 +9,7 @@ from firebase_admin import credentials, firestore
 from google.api_core.exceptions import AlreadyExists
 
 from .config import Settings
+from .phones import normalize_phone
 
 
 DEFAULT_STAGES = (
@@ -24,15 +24,6 @@ DEFAULT_STAGES = (
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def normalize_phone(value: str) -> str:
-    digits = re.sub(r"\D", "", value or "")
-    if digits.startswith("00"):
-        digits = digits[2:]
-    if len(digits) in (10, 11):
-        digits = f"55{digits}"
-    return digits[:15]
 
 
 def stable_id(*parts: str) -> str:
@@ -321,23 +312,25 @@ class CrmRepository:
         return self.ingest_message(instance_name, raw_message)
 
     def _find_existing_lead(self, phone: str) -> str | None:
-        # This is intentionally bounded. It links current Prospect Sites leads without
-        # changing their documents or their collection behavior.
-        for snapshot in self.db.collection("leads").limit(500).stream():
-            data = snapshot.to_dict() or {}
-            candidates = (data.get("phone", ""), data.get("cnpj_phone", ""))
-            if any(normalize_phone(candidate) == phone for candidate in candidates if candidate):
-                return snapshot.id
+        # Single-field equality queries use Firestore's automatic indexes and
+        # avoid the previous 500-document scan for every unlinked contact.
+        matches: set[str] = set()
+        leads = self.db.collection("leads")
+        for field in ("phone_digits", "cnpj_phone_digits"):
+            matches.update(
+                snapshot.id
+                for snapshot in leads.where(field, "==", phone).limit(2).stream()
+            )
         archived = list(
             self.db.collection("archived_lead_ids")
             .where("phone_digits", "==", phone)
-            .limit(1)
+            .limit(2)
             .stream()
         )
-        if archived:
-            data = archived[0].to_dict() or {}
-            return str(data.get("place_id") or archived[0].id)
-        return None
+        for snapshot in archived:
+            data = snapshot.to_dict() or {}
+            matches.add(str(data.get("place_id") or snapshot.id))
+        return next(iter(matches)) if len(matches) == 1 else None
 
     def ingest_message(self, instance_name: str, message: dict) -> dict:
         key = message.get("key") or {}

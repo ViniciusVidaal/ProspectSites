@@ -22,6 +22,7 @@ app = FastAPI(title="Prospect Sites API", version="2.0.0")
 app.include_router(crm_router)
 app.include_router(google_analysis_router)
 jobs: dict[str, Job] = {}
+phone_index_backfill_task: asyncio.Task | None = None
 
 try:
     _settings = get_settings()
@@ -558,6 +559,34 @@ async def migrate_legacy_leads() -> None:
     except Exception as exc:
         # The app remains online for new research if the legacy source is unavailable.
         print(f"Migração inicial da planilha não concluída: {exc}")
+
+
+async def retry_phone_index_backfill() -> None:
+    while True:
+        await asyncio.sleep(15 * 60)
+        try:
+            updated = await asyncio.to_thread(repository().backfill_phone_indexes)
+            print(f"Indice de telefones pronto: {updated} documento(s) atualizado(s).")
+            return
+        except Exception as exc:
+            print(f"Indice de telefones aguardando renovacao da cota: {exc}")
+
+
+@app.on_event("startup")
+async def prepare_phone_indexes() -> None:
+    global phone_index_backfill_task
+    try:
+        updated = await asyncio.to_thread(repository().backfill_phone_indexes)
+        print(f"Indice de telefones pronto: {updated} documento(s) atualizado(s).")
+    except Exception as exc:
+        print(f"Indice de telefones aguardando renovacao da cota: {exc}")
+        phone_index_backfill_task = asyncio.create_task(retry_phone_index_backfill())
+
+
+@app.on_event("shutdown")
+async def stop_phone_index_backfill() -> None:
+    if phone_index_backfill_task and not phone_index_backfill_task.done():
+        phone_index_backfill_task.cancel()
 
 
 @app.post("/api/search", status_code=202)

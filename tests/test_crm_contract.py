@@ -151,7 +151,7 @@ class HermesContractTests(unittest.TestCase):
         repo = object.__new__(CrmRepository)
         repo.db = MagicMock()
         active_collection = MagicMock()
-        active_collection.limit.return_value.stream.return_value = []
+        active_collection.where.return_value.limit.return_value.stream.return_value = []
         archived_collection = MagicMock()
         archived_snapshot = MagicMock()
         archived_snapshot.id = "place-archived"
@@ -163,6 +163,7 @@ class HermesContractTests(unittest.TestCase):
 
         self.assertEqual(result, "place-archived")
         archived_collection.where.assert_called_once_with("phone_digits", "==", "5561999999999")
+        active_collection.limit.assert_not_called()
 
     @patch("backend.crm_router.lead_repository")
     @patch("backend.crm_router.get_settings")
@@ -173,25 +174,31 @@ class HermesContractTests(unittest.TestCase):
         self.assertEqual(result.exception.status_code, 401)
         lead_repository.assert_not_called()
 
-    def test_phone_lookup_reports_duplicates_and_scan_limit(self):
+    def test_phone_lookup_reports_duplicates_through_indexes(self):
         repo = object.__new__(FirestoreRepository)
         repo.collection = MagicMock()
         repo.blocklist = MagicMock()
         snapshots = []
         for index in range(3):
             item = MagicMock()
-            item.to_dict.return_value = {"phone": "61999999999" if index < 2 else ""}
             snapshots.append(item)
-        repo.collection.limit.return_value.stream.return_value = snapshots
+        phone_query = MagicMock()
+        phone_query.limit.return_value.stream.return_value = snapshots
+        cnpj_query = MagicMock()
+        cnpj_query.limit.return_value.stream.return_value = []
+        repo.collection.where.side_effect = [phone_query, cnpj_query]
         repo.blocklist.where.return_value.limit.return_value.stream.return_value = []
         with patch.object(repo, "_lead", side_effect=[
             SimpleNamespace(place_id=str(i), company_name="Empresa", phone="61999999999", address="", neighborhood="", city="", state="", maps_link="", archived=False)
-            for i in range(2)
+            for i in range(3)
         ]):
-            result = repo.find_prospects_by_phone("5561999999999", scan_limit=2)
-        self.assertEqual(len(result["matches"]), 2)
-        self.assertTrue(result["active_scan_limited"])
+            result = repo.find_prospects_by_phone("5561999999999")
+        self.assertEqual(len(result["matches"]), 3)
+        self.assertFalse(result["active_scan_limited"])
         self.assertTrue(result["requires_confirmation"])
+        repo.collection.limit.assert_not_called()
+        repo.collection.where.assert_any_call("phone_digits", "==", "5561999999999")
+        repo.collection.where.assert_any_call("cnpj_phone_digits", "==", "5561999999999")
 
     @patch("backend.crm_router.get_settings")
     def test_analysis_requires_customer_acceptance(self, get_settings):
